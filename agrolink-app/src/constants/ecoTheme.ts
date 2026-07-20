@@ -1,0 +1,30 @@
+export const EcoColors = {
+  void: '#0b3d2e',
+  panel: '#103d30',
+  raised: '#174d3a',
+  line: '#2f634d',
+  muted: '#adc4b6',
+  text: '#f0f8f1',
+  lime: '#b8f34a',
+  limeDeep: '#92d72f',
+  cream: '#e7f1e6',
+  fieldBg: '#0a140e',
+  placeholder: '#718479',
+  onLime: '#07100b',
+  cardBg: '#0d1912',
+  cardBgActive: '#14241a',
+  borderSubtle: '#294131',
+  borderStrong: '#415f46',
+  amber: '#fcd34d',
+  sky: '#7dd3fc',
+} as const;
+
+export const EcoFonts = {
+  body: 'DMSans_400Regular',
+  bodyMedium: 'DMSans_500Medium',
+  bodySemiBold: 'DMSans_600SemiBold',
+  bodyBold: 'DMSans_700Bold',
+  headingSemiBold: 'Manrope_600SemiBold',
+  headingBold: 'Manrope_700Bold',
+  headingExtraBold: 'Manrope_800ExtraBold',
+} as const;

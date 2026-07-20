@@ -4,19 +4,22 @@ import {
   Text,
   StyleSheet,
   TextInput,
-  Button,
+  Pressable,
   ScrollView,
   Alert,
   ActivityIndicator,
-  TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import Feather from '@expo/vector-icons/Feather';
+
 import { auth } from '../firebase/config';
 import {
   getUserProfile,
   updateUserProfile,
   logoutUser,
 } from '../services/authService';
+import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 
 export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
@@ -112,250 +115,256 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
-      </View>
+      <SafeAreaView style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={EcoColors.lime} />
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>My Profile</Text>
-        <View style={{ width: 60 }} />
-      </View>
+    <SafeAreaView style={styles.root}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()}>
+            <Feather name="arrow-left" size={20} color={EcoColors.muted} />
+          </Pressable>
+          <Text style={styles.title}>My profile</Text>
+          <View style={{ width: 20 }} />
+        </View>
 
-      {/* Profile Section */}
-      <View style={styles.profileSection}>
-        <View style={styles.profilePictureContainer}>
+        <View style={styles.profileSection}>
           <View style={styles.profilePicture}>
             <Text style={styles.profilePictureInitial}>
               {firstName.charAt(0).toUpperCase()}
             </Text>
           </View>
+          <Text style={styles.profileName}>
+            {firstName} {lastName}
+          </Text>
+          <Text style={styles.profileEmail}>{email}</Text>
+
+          {userTypes.length > 0 && (
+            <View style={styles.userTypesContainer}>
+              {userTypes.map((type) => (
+                <View key={type} style={styles.userTypeBadge}>
+                  <Text style={styles.userTypeBadgeText}>
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
-        <Text style={styles.profileName}>
-          {firstName} {lastName}
-        </Text>
-        <Text style={styles.profileEmail}>{email}</Text>
-      </View>
 
-      {/* User Types Section */}
-      {userTypes.length > 0 && (
-        <View style={styles.userTypesSection}>
-          <Text style={styles.userTypesTitle}>Your Roles</Text>
-          <View style={styles.userTypesContainer}>
-            {userTypes.map((type) => (
-              <View key={type} style={styles.userTypeBadge}>
-                <Text style={styles.userTypeBadgeText}>
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </Text>
-              </View>
-            ))}
-          </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Edit personal information</Text>
+
+          <Field label="First name *">
+            <TextInput
+              style={styles.input}
+              placeholderTextColor={EcoColors.placeholder}
+              value={firstName}
+              onChangeText={setFirstName}
+              editable={!saving}
+            />
+          </Field>
+
+          <Field label="Last name *">
+            <TextInput
+              style={styles.input}
+              placeholderTextColor={EcoColors.placeholder}
+              value={lastName}
+              onChangeText={setLastName}
+              editable={!saving}
+            />
+          </Field>
+
+          <Field label="Phone number *">
+            <TextInput
+              style={styles.input}
+              placeholderTextColor={EcoColors.placeholder}
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              editable={!saving}
+            />
+          </Field>
+
+          <Field label="Address">
+            <TextInput
+              style={styles.input}
+              placeholderTextColor={EcoColors.placeholder}
+              value={address}
+              onChangeText={setAddress}
+              editable={!saving}
+            />
+          </Field>
+
+          <Field label="Country">
+            <TextInput
+              style={styles.input}
+              placeholderTextColor={EcoColors.placeholder}
+              value={country}
+              onChangeText={setCountry}
+              editable={!saving}
+            />
+          </Field>
+
+          <Field label="Province">
+            <TextInput
+              style={styles.input}
+              placeholderTextColor={EcoColors.placeholder}
+              value={province}
+              onChangeText={setProvince}
+              editable={!saving}
+            />
+          </Field>
+
+          <Field label="City">
+            <TextInput
+              style={styles.input}
+              placeholderTextColor={EcoColors.placeholder}
+              value={city}
+              onChangeText={setCity}
+              editable={!saving}
+            />
+          </Field>
+
+          <Pressable
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+            onPress={handleSaveProfile}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator color={EcoColors.onLime} />
+            ) : (
+              <Text style={styles.saveButtonText}>Save changes</Text>
+            )}
+          </Pressable>
+
+          <Pressable style={styles.logoutButton} onPress={handleLogout}>
+            <Feather name="log-out" size={15} color="#fca5a5" />
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </Pressable>
         </View>
-      )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
 
-      {/* Edit Form Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Edit Personal Information</Text>
-
-        <Text style={styles.label}>First Name *</Text>
-        <TextInput
-          placeholder="First Name"
-          style={styles.input}
-          value={firstName}
-          onChangeText={setFirstName}
-          editable={!saving}
-        />
-
-        <Text style={styles.label}>Last Name *</Text>
-        <TextInput
-          placeholder="Last Name"
-          style={styles.input}
-          value={lastName}
-          onChangeText={setLastName}
-          editable={!saving}
-        />
-
-        <Text style={styles.label}>Phone Number *</Text>
-        <TextInput
-          placeholder="Phone Number"
-          style={styles.input}
-          value={phoneNumber}
-          onChangeText={setPhoneNumber}
-          editable={!saving}
-        />
-
-        <Text style={styles.label}>Address</Text>
-        <TextInput
-          placeholder="Address"
-          style={styles.input}
-          value={address}
-          onChangeText={setAddress}
-          editable={!saving}
-        />
-
-        <Text style={styles.label}>Country</Text>
-        <TextInput
-          placeholder="Country"
-          style={styles.input}
-          value={country}
-          onChangeText={setCountry}
-          editable={!saving}
-        />
-
-        <Text style={styles.label}>Province</Text>
-        <TextInput
-          placeholder="Province"
-          style={styles.input}
-          value={province}
-          onChangeText={setProvince}
-          editable={!saving}
-        />
-
-        <Text style={styles.label}>City</Text>
-        <TextInput
-          placeholder="City"
-          style={styles.input}
-          value={city}
-          onChangeText={setCity}
-          editable={!saving}
-        />
-
-        <Button
-          title={saving ? 'Saving...' : 'Save Changes'}
-          onPress={handleSaveProfile}
-          disabled={saving}
-          color="#4CAF50"
-        />
-
-        <View style={{ height: 15 }} />
-
-        <Button
-          title="Logout"
-          onPress={handleLogout}
-          color="#e74c3c"
-        />
-      </View>
-    </ScrollView>
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      {children}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    padding: 20,
-    backgroundColor: '#f5f5f5',
-  },
+  root: { flex: 1, backgroundColor: EcoColors.void },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: EcoColors.void,
   },
+  container: { flexGrow: 1, padding: 20, paddingBottom: 40 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 24,
   },
-  backButton: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#4CAF50',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
+  title: { fontFamily: EcoFonts.headingBold, fontSize: 18, color: EcoColors.text },
   profileSection: {
     alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
+    backgroundColor: EcoColors.cardBgActive,
+    borderWidth: 1,
+    borderColor: EcoColors.borderStrong,
+    padding: 22,
+    borderRadius: 24,
     marginBottom: 20,
-  },
-  profilePictureContainer: {
-    marginBottom: 15,
   },
   profilePicture: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#4CAF50',
+    width: 72,
+    height: 72,
+    borderRadius: 26,
+    backgroundColor: EcoColors.lime,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 14,
   },
   profilePictureInitial: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontFamily: EcoFonts.headingExtraBold,
+    fontSize: 30,
+    color: EcoColors.onLime,
   },
-  profileName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  profileEmail: {
-    fontSize: 14,
-    color: '#666',
-  },
-  userTypesSection: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  userTypesTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#333',
-  },
+  profileName: { fontFamily: EcoFonts.headingBold, fontSize: 18, color: EcoColors.text },
+  profileEmail: { fontFamily: EcoFonts.body, fontSize: 13, color: EcoColors.muted, marginTop: 4 },
   userTypesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    marginTop: 14,
+    justifyContent: 'center',
   },
   userTypeBadge: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: EcoColors.lime,
     paddingVertical: 6,
     paddingHorizontal: 12,
+    borderRadius: 999,
+  },
+  userTypeBadgeText: { fontFamily: EcoFonts.bodyBold, fontSize: 11, color: EcoColors.onLime },
+  section: {
+    backgroundColor: EcoColors.cardBg,
+    borderWidth: 1,
+    borderColor: EcoColors.borderSubtle,
+    padding: 18,
     borderRadius: 20,
   },
-  userTypeBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  section: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 30,
-  },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 15,
+    fontFamily: EcoFonts.bodyBold,
+    fontSize: 14,
+    color: EcoColors.text,
+    marginBottom: 16,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
+  field: { marginBottom: 14 },
+  fieldLabel: {
+    fontFamily: EcoFonts.bodyBold,
+    fontSize: 12,
+    color: EcoColors.cream,
     marginBottom: 6,
-    color: '#333',
   },
   input: {
+    fontFamily: EcoFonts.body,
+    color: EcoColors.text,
+    backgroundColor: EcoColors.fieldBg,
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 15,
-    backgroundColor: '#fff',
+    borderColor: EcoColors.line,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    fontSize: 14,
   },
+  saveButton: {
+    backgroundColor: EcoColors.lime,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  saveButtonDisabled: { opacity: 0.7 },
+  saveButtonText: { fontFamily: EcoFonts.bodyBold, fontSize: 14, color: EcoColors.onLime },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 12,
+  },
+  logoutButtonText: { fontFamily: EcoFonts.bodyBold, fontSize: 14, color: '#fca5a5' },
 });

@@ -1,22 +1,59 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
+import Feather from '@expo/vector-icons/Feather';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+
 import { auth } from '../firebase/config';
 import { getUserProfile } from '../services/authService';
+import { EcoColors, EcoFonts } from '../constants/ecoTheme';
+import { CURRENCY, ROLE_LABELS, useMarketStore } from '../store/MarketStore';
+import AppShell from '../components/AppShell';
+
+function timeAgo(iso: string) {
+  const minutes = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+const quickPaths: {
+  key: string;
+  label: string;
+  description: string;
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+  route: '/marketplace' | '/logistics' | '/extension';
+}[] = [
+  {
+    key: 'marketplace',
+    label: 'Find produce',
+    description: "Browse today's open listings",
+    icon: 'cart-outline',
+    route: '/marketplace',
+  },
+  {
+    key: 'logistics',
+    label: 'Move a load',
+    description: 'See delivery opportunities',
+    icon: 'truck-outline',
+    route: '/logistics',
+  },
+  {
+    key: 'extension',
+    label: 'Grow smarter',
+    description: 'Meet trusted advisers',
+    icon: 'sprout-outline',
+    route: '/extension',
+  },
+];
 
 export default function DashboardScreen() {
-  const [userName, setUserName] = useState('');
-  const [userInitial, setUserInitial] = useState('');
+  const { listings, activeRole, currentUser, setCurrentUser, setRoles } = useMarketStore();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<'current' | 'past'>('current');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUserData();
@@ -27,284 +64,442 @@ export default function DashboardScreen() {
       setLoading(true);
       setError('');
 
-      const currentUser = auth.currentUser;
-      console.log('Current user:', currentUser?.uid);
-
-      if (!currentUser) {
+      const user = auth.currentUser;
+      if (!user) {
         setError('No user logged in');
         return;
       }
 
-      const profile = await getUserProfile(currentUser.uid);
-      console.log('Profile data:', profile);
+      const profile = await getUserProfile(user.uid);
 
       if (profile && profile.personalInfo) {
-        const firstName = profile.personalInfo.firstName;
-        setUserName(firstName);
-        setUserInitial(firstName.charAt(0).toUpperCase());
+        const fullName = `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`.trim();
+        setCurrentUser({ id: user.uid, name: fullName, email: profile.email });
+        // Every account can switch between all three modes for now. Once
+        // seller/transporter approval exists, restrict `roles` to only the
+        // modes the user is authorized for.
+        setRoles(['buyer', 'seller', 'transporter']);
       } else {
         setError('User profile not found');
       }
     } catch (err: any) {
-      console.error('Error fetching user profile:', err);
       setError(err.message || 'Error loading profile');
     } finally {
       setLoading(false);
     }
   };
 
+  const myId = currentUser?.id || 'me';
+  const myTransactions = useMemo(
+    () =>
+      listings.filter((listing) =>
+        activeRole === 'buyer'
+          ? listing.buyerId === myId
+          : activeRole === 'seller'
+            ? listing.sellerId === myId
+            : listing.transporterId === myId
+      ),
+    [listings, activeRole, myId]
+  );
+  const currentTransactions = myTransactions.filter((t) =>
+    activeTab === 'current' ? t.status !== 'delivered' : t.status === 'delivered'
+  );
+  const stats = useMemo(
+    () => ({
+      active: myTransactions.filter((t) => t.status !== 'delivered').length,
+      moving: myTransactions.filter((t) => t.status === 'in_transit').length,
+      complete: myTransactions.filter((t) => t.status === 'delivered').length,
+    }),
+    [myTransactions]
+  );
+  const freshToday = useMemo(
+    () => listings.filter((t) => t.status === 'listed').slice(0, 3),
+    [listings]
+  );
+
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
+        <ActivityIndicator size="large" color={EcoColors.lime} />
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Header with Profile */}
-      <View style={styles.header}>
-        <Text style={styles.title}>AgroLink</Text>
-        <TouchableOpacity
-          style={styles.profileButton}
-          onPress={() => router.push('/profile')}
-        >
-          <View style={styles.profilePicture}>
-            <Text style={styles.profileInitial}>{userInitial}</Text>
+    <AppShell active="home">
+      <ScrollView contentContainerStyle={styles.container}>
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+            <Pressable onPress={fetchUserData}>
+              <Text style={styles.retryButton}>Retry</Text>
+            </Pressable>
           </View>
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{userName}</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+        ) : null}
 
-      {/* Error message if any */}
-      {error && (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={fetchUserData}>
-            <Text style={styles.retryButton}>Retry</Text>
-          </TouchableOpacity>
+        <View style={styles.heroCard}>
+          <Text style={styles.eyebrow}>Good to see you</Text>
+          <Text style={styles.heroHeading}>
+            Your {ROLE_LABELS[activeRole].toLowerCase()} market is alive.
+          </Text>
+          <Text style={styles.heroSubtext}>
+            Keep an eye on every trade, from the first listing to a safe arrival.
+          </Text>
+          <View style={styles.marketOpenPill}>
+            <View style={styles.marketOpenDot} />
+            <Text style={styles.marketOpenText}>Market open</Text>
+          </View>
         </View>
-      )}
 
-      {/* Main Content */}
-      <View style={styles.content}>
-        <Text style={styles.welcomeText}>Welcome to AgroLink</Text>
-        <Text style={styles.subtitleText}>
-          Select a role to get started
-        </Text>
-
-        {/* Role Buttons */}
-        <TouchableOpacity
-          style={styles.roleCard}
-          onPress={() => router.push('/buyer')}
-        >
-          <View style={styles.roleIconBuyer}>
-            <Text style={styles.roleEmoji}>🛒</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Your pulse</Text>
+            <Feather name="activity" size={16} color={EcoColors.lime} />
           </View>
-          <Text style={styles.roleName}>Buyer</Text>
-          <Text style={styles.roleDescription}>
-            Find products to purchase
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.roleCard}
-          onPress={() => router.push('/seller')}
-        >
-          <View style={styles.roleIconSeller}>
-            <Text style={styles.roleEmoji}>🌾</Text>
+          <View style={styles.pulseRow}>
+            <Metric label="Active" value={stats.active} />
+            <Metric label="Moving" value={stats.moving} />
+            <Metric label="Complete" value={stats.complete} />
           </View>
-          <Text style={styles.roleName}>Seller</Text>
-          <Text style={styles.roleDescription}>
-            Post products to sell
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.roleCard}
-          onPress={() => router.push('/transporter')}
-        >
-          <View style={styles.roleIconTransporter}>
-            <Text style={styles.roleEmoji}>🚚</Text>
-          </View>
-          <Text style={styles.roleName}>Transporter</Text>
-          <Text style={styles.roleDescription}>
-            Offer transportation services
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Transactions Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Your Transactions</Text>
-        <View style={styles.placeholderBox}>
-          <Text style={styles.placeholderText}>
-            Transactions will appear here
-          </Text>
         </View>
-      </View>
-    </ScrollView>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick paths</Text>
+          <Text style={styles.sectionSubtitle}>Everything you need, close at hand.</Text>
+          <View style={styles.quickPathGrid}>
+            {quickPaths.map(({ key, label, description, icon, route }) => (
+              <Pressable key={key} style={styles.quickPathCard} onPress={() => router.push(route)}>
+                <View style={styles.quickPathIconBadge}>
+                  <MaterialCommunityIcons name={icon} size={18} color={EcoColors.lime} />
+                </View>
+                <View style={styles.quickPathTextRow}>
+                  <Text style={styles.quickPathLabel}>{label}</Text>
+                  <Feather name="arrow-right" size={14} color={EcoColors.muted} />
+                </View>
+                <Text style={styles.quickPathDescription}>{description}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.activityHeaderRow}>
+            <View>
+              <Text style={styles.sectionTitle}>Your activity</Text>
+              <Text style={styles.sectionSubtitle}>Transactions that matter to you.</Text>
+            </View>
+            <View style={styles.activityTabs}>
+              <Pressable
+                style={[styles.activityTab, activeTab === 'current' && styles.activityTabActive]}
+                onPress={() => setActiveTab('current')}
+              >
+                <Text
+                  style={[
+                    styles.activityTabText,
+                    activeTab === 'current' && styles.activityTabTextActive,
+                  ]}
+                >
+                  Current
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.activityTab, activeTab === 'past' && styles.activityTabActive]}
+                onPress={() => setActiveTab('past')}
+              >
+                <Text
+                  style={[
+                    styles.activityTabText,
+                    activeTab === 'past' && styles.activityTabTextActive,
+                  ]}
+                >
+                  Past
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {currentTransactions.length === 0 && (
+            <Text style={styles.emptyText}>
+              Nothing here yet. The market is ready when you are.
+            </Text>
+          )}
+          <View style={styles.activityList}>
+            {currentTransactions.map((tx) => {
+              const expanded = expandedId === tx.id;
+              return (
+                <View key={tx.id} style={styles.activityCard}>
+                  <Pressable
+                    style={styles.activityRow}
+                    onPress={() => setExpandedId(expanded ? null : tx.id)}
+                  >
+                    <View style={styles.activityIconBadge}>
+                      <Feather name={statusIcon(tx.status)} size={15} color={EcoColors.lime} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.activityItem} numberOfLines={1}>
+                        {tx.item}
+                      </Text>
+                      <Text style={styles.activityMeta} numberOfLines={1}>
+                        {tx.quantity} {tx.unit} · {tx.origin}
+                      </Text>
+                    </View>
+                    <Feather
+                      name={expanded ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={EcoColors.muted}
+                    />
+                  </Pressable>
+                  {expanded && (
+                    <View style={styles.activityDetail}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.activityDetailLabel}>Destination</Text>
+                        <Text style={styles.activityDetailValue}>
+                          {tx.destination || 'Not assigned yet'}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.activityDetailLabel}>Value</Text>
+                        <Text style={styles.activityDetailValue}>
+                          {CURRENCY}
+                          {tx.price.toLocaleString()}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.activityHeaderRow}>
+            <Text style={styles.sectionTitle}>Fresh today</Text>
+            <Pressable onPress={() => router.push('/marketplace')}>
+              <Text style={styles.seeMarketLink}>See market</Text>
+            </Pressable>
+          </View>
+          <View style={styles.freshList}>
+            {freshToday.map((listing) => (
+              <Pressable
+                key={listing.id}
+                style={styles.freshRow}
+                onPress={() => router.push('/marketplace')}
+              >
+                <Image source={{ uri: listing.imageUrl }} style={styles.freshImage} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.activityItem} numberOfLines={1}>
+                    {listing.item}
+                  </Text>
+                  <Text style={styles.activityMeta} numberOfLines={1}>
+                    {listing.quantity} {listing.unit} · {timeAgo(listing.createdAt)}
+                  </Text>
+                </View>
+                <Text style={styles.freshPrice}>
+                  {CURRENCY}
+                  {listing.price}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+    </AppShell>
+  );
+}
+
+function statusIcon(status: string): React.ComponentProps<typeof Feather>['name'] {
+  if (status === 'in_transit') return 'truck';
+  if (status === 'delivered') return 'check-circle';
+  if (status === 'ordered') return 'activity';
+  return 'package';
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.metricCard}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    padding: 20,
-    backgroundColor: '#f5f5f5',
-  },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: EcoColors.void,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 30,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-  },
-  profileButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  profilePicture: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  profileInitial: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  profileInfo: {
-    justifyContent: 'center',
-  },
-  profileName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
+  container: { flexGrow: 1, padding: 18, paddingBottom: 32, gap: 22 },
   errorBox: {
-    backgroundColor: '#ffebee',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
     padding: 15,
-    borderRadius: 8,
-    marginBottom: 20,
+    borderRadius: 14,
     borderLeftWidth: 4,
-    borderLeftColor: '#e74c3c',
+    borderLeftColor: '#ef4444',
   },
-  errorText: {
-    color: '#c62828',
-    fontSize: 14,
-    marginBottom: 10,
+  errorText: { fontFamily: EcoFonts.body, color: '#fca5a5', fontSize: 14, marginBottom: 10 },
+  retryButton: { fontFamily: EcoFonts.bodyBold, color: EcoColors.lime, fontSize: 14 },
+  heroCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: EcoColors.borderStrong,
+    backgroundColor: EcoColors.cardBgActive,
+    padding: 22,
   },
-  retryButton: {
-    color: '#4CAF50',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  content: {
-    marginBottom: 30,
-  },
-  welcomeText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitleText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 25,
-  },
-  roleCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 15,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  roleIconBuyer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#E3F2FD',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  roleIconSeller: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#F1F8E9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  roleIconTransporter: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FFF3E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  roleEmoji: {
-    fontSize: 28,
-  },
-  roleName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  roleDescription: {
+  eyebrow: {
+    fontFamily: EcoFonts.bodyBold,
     fontSize: 12,
-    color: '#999',
-    textAlign: 'center',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: EcoColors.lime,
   },
-  section: {
-    marginTop: 20,
+  heroHeading: {
+    fontFamily: EcoFonts.headingExtraBold,
+    fontSize: 24,
+    color: EcoColors.text,
+    marginTop: 10,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 15,
+  heroSubtext: {
+    fontFamily: EcoFonts.body,
+    fontSize: 13,
+    color: EcoColors.muted,
+    marginTop: 8,
+    lineHeight: 19,
   },
-  placeholderBox: {
-    backgroundColor: '#fff',
-    padding: 30,
-    borderRadius: 12,
+  marketOpenPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: EcoColors.borderStrong,
+    backgroundColor: EcoColors.cardBg,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  marketOpenDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: EcoColors.lime },
+  marketOpenText: { fontFamily: EcoFonts.bodyBold, fontSize: 11, color: EcoColors.lime },
+  section: {},
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sectionTitle: { fontFamily: EcoFonts.headingBold, fontSize: 18, color: EcoColors.text },
+  sectionSubtitle: { fontFamily: EcoFonts.body, fontSize: 13, color: EcoColors.muted, marginTop: 4 },
+  pulseRow: { flexDirection: 'row', gap: 10 },
+  metricCard: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: EcoColors.borderSubtle,
+    backgroundColor: EcoColors.cardBg,
+    padding: 14,
+  },
+  metricLabel: {
+    fontFamily: EcoFonts.bodyBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: EcoColors.muted,
+  },
+  metricValue: {
+    fontFamily: EcoFonts.headingExtraBold,
+    fontSize: 24,
+    color: EcoColors.lime,
+    marginTop: 8,
+  },
+  quickPathGrid: { gap: 10, marginTop: 12 },
+  quickPathCard: {
+    backgroundColor: EcoColors.cardBg,
+    borderWidth: 1,
+    borderColor: EcoColors.borderSubtle,
+    borderRadius: 20,
+    padding: 16,
+  },
+  quickPathIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: EcoColors.cardBgActive,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 150,
   },
-  placeholderText: {
-    color: '#999',
-    fontSize: 14,
+  quickPathTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
   },
+  quickPathLabel: { fontFamily: EcoFonts.bodyBold, fontSize: 15, color: EcoColors.text },
+  quickPathDescription: {
+    fontFamily: EcoFonts.body,
+    fontSize: 12,
+    color: EcoColors.muted,
+    marginTop: 4,
+  },
+  activityHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  activityTabs: { flexDirection: 'row', backgroundColor: EcoColors.cardBgActive, borderRadius: 12, padding: 3 },
+  activityTab: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 9 },
+  activityTabActive: { backgroundColor: EcoColors.lime },
+  activityTabText: { fontFamily: EcoFonts.bodyBold, fontSize: 11, color: EcoColors.muted },
+  activityTabTextActive: { color: EcoColors.onLime },
+  emptyText: {
+    fontFamily: EcoFonts.body,
+    color: EcoColors.muted,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  activityList: { gap: 10 },
+  activityCard: {
+    backgroundColor: EcoColors.cardBg,
+    borderWidth: 1,
+    borderColor: EcoColors.borderSubtle,
+    borderRadius: 18,
+    padding: 14,
+  },
+  activityRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  activityIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: EcoColors.cardBgActive,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activityItem: { fontFamily: EcoFonts.bodyBold, fontSize: 14, color: EcoColors.text },
+  activityMeta: { fontFamily: EcoFonts.body, fontSize: 12, color: EcoColors.muted, marginTop: 2 },
+  activityDetail: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    backgroundColor: EcoColors.cardBgActive,
+    borderRadius: 14,
+    padding: 12,
+  },
+  activityDetailLabel: { fontFamily: EcoFonts.body, fontSize: 11, color: EcoColors.muted },
+  activityDetailValue: { fontFamily: EcoFonts.bodySemiBold, fontSize: 13, color: EcoColors.text, marginTop: 2 },
+  seeMarketLink: { fontFamily: EcoFonts.bodyBold, fontSize: 12, color: EcoColors.lime },
+  freshList: { gap: 10 },
+  freshRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: EcoColors.cardBg,
+    borderRadius: 16,
+    padding: 10,
+  },
+  freshImage: { width: 46, height: 46, borderRadius: 12 },
+  freshPrice: { fontFamily: EcoFonts.bodyBold, fontSize: 13, color: EcoColors.lime },
 });
