@@ -49,7 +49,7 @@ const quickPaths: {
 ];
 
 export default function DashboardScreen() {
-  const { listings, activeRole, currentUser, setCurrentUser, setRoles } = useMarketStore();
+  const { listings, orders, activeRole, currentUser, setCurrentUser, setRoles } = useMarketStore();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'current' | 'past'>('current');
@@ -92,14 +92,14 @@ export default function DashboardScreen() {
   const myId = currentUser?.id || 'me';
   const myTransactions = useMemo(
     () =>
-      listings.filter((listing) =>
+      orders.filter((order) =>
         activeRole === 'buyer'
-          ? listing.buyerId === myId
+          ? order.buyerId === myId
           : activeRole === 'seller'
-            ? listing.sellerId === myId
-            : listing.transporterId === myId
+            ? order.sellerId === myId
+            : order.transporterId === myId
       ),
-    [listings, activeRole, myId]
+    [orders, activeRole, myId]
   );
   const currentTransactions = myTransactions.filter((t) =>
     activeTab === 'current' ? t.status !== 'delivered' : t.status === 'delivered'

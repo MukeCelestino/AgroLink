@@ -1,9 +1,26 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  arrayUnion,
+  runTransaction,
+} from 'firebase/firestore';
+
+import { db } from '../firebase/config';
 
 export const CURRENCY = 'K';
 
+const DEFAULT_LISTING_IMAGE =
+  'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=70';
+
 export type Role = 'buyer' | 'seller' | 'transporter';
-export type ListingStatus = 'listed' | 'ordered' | 'in_transit' | 'delivered';
+export type ListingStatus = 'listed' | 'closed';
+export type OrderStatus = 'ordered' | 'in_transit' | 'delivered';
 export type Coverage = 'cross_border' | 'country' | 'province' | 'district';
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -26,20 +43,41 @@ export interface DeliveryUpdate {
   status: string;
 }
 
+// A Listing is a seller's remaining stock. Buying some of it never mutates
+// its lifecycle beyond quantity/price — it stays 'listed' (and buyable) for
+// whatever wasn't taken, and only flips to 'closed' once quantity hits 0.
+// Each purchase instead creates its own Order, which is what carries the
+// ordered -> in_transit -> delivered lifecycle.
 export interface Listing {
   id: string;
   item: string;
   quantity: number;
   unit: string;
+  pricePerUnit: number;
   price: number;
   origin: string;
-  destination?: string;
   status: ListingStatus;
   imageUrl: string;
   sellerId: string;
   sellerName: string;
-  buyerId?: string;
-  buyerName?: string;
+  createdAt: string;
+}
+
+export interface Order {
+  id: string;
+  listingId: string;
+  item: string;
+  quantity: number;
+  unit: string;
+  price: number;
+  origin: string;
+  destination: string;
+  imageUrl: string;
+  status: OrderStatus;
+  sellerId: string;
+  sellerName: string;
+  buyerId: string;
+  buyerName: string;
   transporterId?: string;
   createdAt: string;
   updates: DeliveryUpdate[];
@@ -96,106 +134,6 @@ export interface CurrentUser {
 const FALLBACK_USER_ID = 'me';
 const FALLBACK_USER_NAME = 'You';
 
-const initialListings: Listing[] = [
-  {
-    id: 'l1',
-    item: 'White Maize',
-    quantity: 500,
-    unit: 'bags',
-    price: 12500,
-    origin: 'Mkushi Farm Block',
-    status: 'listed',
-    imageUrl:
-      'https://images.unsplash.com/photo-1601472544010-c2c6a0d3d2c1?auto=format&fit=crop&w=600&q=70',
-    sellerId: 'seed-1',
-    sellerName: 'Mkushi Grain Co.',
-    createdAt: new Date(Date.now() - 3 * 3600000).toISOString(),
-    updates: [],
-  },
-  {
-    id: 'l2',
-    item: 'Fresh Tomatoes',
-    quantity: 120,
-    unit: 'crates',
-    price: 4800,
-    origin: 'Mazabuka Growers',
-    status: 'listed',
-    imageUrl:
-      'https://images.unsplash.com/photo-1546470427-e26264be0b0d?auto=format&fit=crop&w=600&q=70',
-    sellerId: 'seed-2',
-    sellerName: 'Mazabuka Growers',
-    createdAt: new Date(Date.now() - 90 * 60000).toISOString(),
-    updates: [],
-  },
-  {
-    id: 'l3',
-    item: 'Soybeans',
-    quantity: 300,
-    unit: 'bags',
-    price: 9600,
-    origin: 'Chisamba Farm',
-    destination: 'Lusaka Warehouse',
-    status: 'ordered',
-    imageUrl:
-      'https://images.unsplash.com/photo-1620200423727-8127f75d503f?auto=format&fit=crop&w=600&q=70',
-    sellerId: 'seed-3',
-    sellerName: 'Chisamba Farm',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-    updates: [],
-  },
-  {
-    id: 'l4',
-    item: 'Groundnuts',
-    quantity: 150,
-    unit: 'bags',
-    price: 5400,
-    origin: 'Petauke Farm',
-    destination: 'Kitwe Depot',
-    status: 'in_transit',
-    imageUrl:
-      'https://images.unsplash.com/photo-1567892737950-30c4db37cd89?auto=format&fit=crop&w=600&q=70',
-    sellerId: 'seed-4',
-    sellerName: 'Petauke Growers',
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-    updates: [
-      {
-        id: 'u1',
-        timestamp: new Date(Date.now() - 86400000).toISOString(),
-        location: 'Kapiri Mposhi',
-        status: 'Picked up and departed',
-      },
-    ],
-  },
-  {
-    id: 'l5',
-    item: 'Fresh Apples',
-    quantity: 120,
-    unit: 'crates',
-    price: 2800,
-    origin: 'Yakima Valley Orchards',
-    status: 'listed',
-    imageUrl:
-      'https://images.unsplash.com/photo-1570913149827-d2ac84ab3f9a?auto=format&fit=crop&w=600&q=70',
-    sellerId: 'seed-5',
-    sellerName: 'Orchard Hill Growers',
-    createdAt: new Date(Date.now() - 30 * 60000).toISOString(),
-    updates: [],
-  },
-];
-
-const initialBuyRequests: BuyRequest[] = [
-  {
-    id: 'br1',
-    item: 'Sorghum',
-    quantity: 300,
-    unit: 'bags',
-    buyerId: 'seed-6',
-    buyerName: 'Riverside Feeds',
-    notes: 'Needed within two weeks, food-grade.',
-    createdAt: new Date(Date.now() - 3 * 3600000).toISOString(),
-  },
-];
-
 const initialExtensionProviders: ExtensionProvider[] = [
   {
     id: 'ext1',
@@ -229,6 +167,7 @@ interface MarketState {
   activeRole: Role;
   setActiveRole: (role: Role) => void;
 
+  listingsLoading: boolean;
   listings: Listing[];
   addListing: (data: {
     item: string;
@@ -237,14 +176,16 @@ interface MarketState {
     price: number;
     origin: string;
     imageUrl?: string;
-  }) => void;
-  buyListing: (id: string, destination: string, orderedQuantity: number) => void;
-  acceptDelivery: (id: string) => void;
-  markDelivered: (id: string) => void;
-  addDeliveryUpdate: (id: string, update: { location: string; status: string }) => void;
+  }) => Promise<void>;
+
+  orders: Order[];
+  buyListing: (listingId: string, destination: string, orderedQuantity: number) => Promise<void>;
+  acceptDelivery: (orderId: string) => Promise<void>;
+  markDelivered: (orderId: string) => Promise<void>;
+  addDeliveryUpdate: (orderId: string, update: { location: string; status: string }) => Promise<void>;
 
   buyRequests: BuyRequest[];
-  addBuyRequest: (req: { item: string; quantity: number; unit: string; notes?: string }) => void;
+  addBuyRequest: (req: { item: string; quantity: number; unit: string; notes?: string }) => Promise<void>;
 
   transporterProfile: ServiceProfile | null;
   saveTransporterProfile: (profile: ServiceProfile) => void;
@@ -272,8 +213,10 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
   const [roles, setRoles] = useState<Role[]>(['buyer', 'seller', 'transporter']);
   const [activeRole, setActiveRole] = useState<Role>('buyer');
 
-  const [listings, setListings] = useState<Listing[]>(initialListings);
-  const [buyRequests, setBuyRequests] = useState<BuyRequest[]>(initialBuyRequests);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [listingsLoading, setListingsLoading] = useState(true);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [buyRequests, setBuyRequests] = useState<BuyRequest[]>([]);
   const [transporterProfile, setTransporterProfile] = useState<ServiceProfile | null>(null);
   const [extensionProfile, setExtensionProfile] = useState<ServiceProfile | null>(null);
   const [extensionProviders, setExtensionProviders] = useState<ExtensionProvider[]>(
@@ -288,94 +231,176 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
   const myId = currentUser?.id || FALLBACK_USER_ID;
   const myName = currentUser?.name || FALLBACK_USER_NAME;
 
-  const addListing: MarketState['addListing'] = (data) => {
-    const newListing: Listing = {
-      ...data,
-      id: `l${Date.now()}`,
+  // Listings and buy requests live in Firestore so postings, purchases, and
+  // delivery status sync in real time across every signed-in device. The
+  // listeners only attach once someone is signed in, since the security
+  // rules require an authenticated request.
+  useEffect(() => {
+    if (!currentUser) {
+      setListings([]);
+      setListingsLoading(true);
+      return;
+    }
+    const q = query(collection(db, 'Listings'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        setListings(
+          snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<Listing, 'id'>),
+          }))
+        );
+        setListingsLoading(false);
+      },
+      (error) => {
+        console.error('Listings subscription error:', error);
+        setListingsLoading(false);
+      }
+    );
+    return unsubscribe;
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setOrders([]);
+      return;
+    }
+    const q = query(collection(db, 'Orders'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        setOrders(
+          snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<Order, 'id'>),
+          }))
+        );
+      },
+      (error) => console.error('Orders subscription error:', error)
+    );
+    return unsubscribe;
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setBuyRequests([]);
+      return;
+    }
+    const q = query(collection(db, 'BuyRequests'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        setBuyRequests(
+          snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<BuyRequest, 'id'>),
+          }))
+        );
+      },
+      (error) => console.error('BuyRequests subscription error:', error)
+    );
+    return unsubscribe;
+  }, [currentUser]);
+
+  const addListing: MarketState['addListing'] = async (data) => {
+    const pricePerUnit = data.price / data.quantity;
+    await addDoc(collection(db, 'Listings'), {
+      item: data.item,
+      unit: data.unit,
+      origin: data.origin,
+      quantity: data.quantity,
+      pricePerUnit,
+      price: data.price,
       status: 'listed',
       sellerId: myId,
       sellerName: myName,
-      imageUrl:
-        data.imageUrl ||
-        'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=70',
+      imageUrl: data.imageUrl || DEFAULT_LISTING_IMAGE,
       createdAt: new Date().toISOString(),
-      updates: [],
-    };
-    setListings((prev) => [newListing, ...prev]);
+    });
   };
 
-  const buyListing: MarketState['buyListing'] = (id, destination, orderedQuantity) => {
-    setListings((prev) =>
-      prev.map((listing) =>
-        listing.id === id
-          ? {
-              ...listing,
-              status: 'ordered',
-              buyerId: myId,
-              buyerName: myName,
-              destination,
-              quantity: orderedQuantity,
-            }
-          : listing
-      )
-    );
+  // Buying is a transaction: it decrements the listing's remaining stock
+  // (closing it once stock hits 0) and creates a separate Order to carry the
+  // ordered -> in_transit -> delivered lifecycle for just that purchase, so
+  // the rest of the listing's stock stays available to other buyers.
+  const buyListing: MarketState['buyListing'] = async (listingId, destination, orderedQuantity) => {
+    const listingRef = doc(db, 'Listings', listingId);
+    const orderRef = doc(collection(db, 'Orders'));
+    await runTransaction(db, async (transaction) => {
+      const listingSnap = await transaction.get(listingRef);
+      if (!listingSnap.exists()) throw new Error('This listing no longer exists.');
+      const listing = listingSnap.data() as Omit<Listing, 'id'>;
+      if (listing.status !== 'listed') throw new Error('This listing is no longer available.');
+      if (orderedQuantity <= 0 || orderedQuantity > listing.quantity) {
+        throw new Error(`Only ${listing.quantity} ${listing.unit} left.`);
+      }
+
+      const remaining = listing.quantity - orderedQuantity;
+      transaction.update(listingRef, {
+        quantity: remaining,
+        price: Math.round(listing.pricePerUnit * remaining * 100) / 100,
+        status: remaining > 0 ? 'listed' : 'closed',
+      });
+
+      const order: Omit<Order, 'id'> = {
+        listingId,
+        item: listing.item,
+        unit: listing.unit,
+        quantity: orderedQuantity,
+        price: Math.round(listing.pricePerUnit * orderedQuantity * 100) / 100,
+        origin: listing.origin,
+        destination,
+        imageUrl: listing.imageUrl,
+        status: 'ordered',
+        sellerId: listing.sellerId,
+        sellerName: listing.sellerName,
+        buyerId: myId,
+        buyerName: myName,
+        createdAt: new Date().toISOString(),
+        updates: [],
+      };
+      transaction.set(orderRef, order);
+    });
   };
 
-  const acceptDelivery: MarketState['acceptDelivery'] = (id) => {
-    setListings((prev) =>
-      prev.map((listing) =>
-        listing.id === id ? { ...listing, status: 'in_transit', transporterId: myId } : listing
-      )
-    );
+  const acceptDelivery: MarketState['acceptDelivery'] = async (orderId) => {
+    await updateDoc(doc(db, 'Orders', orderId), {
+      status: 'in_transit',
+      transporterId: myId,
+    });
   };
 
-  const markDelivered: MarketState['markDelivered'] = (id) => {
-    setListings((prev) =>
-      prev.map((listing) =>
-        listing.id === id
-          ? {
-              ...listing,
-              status: 'delivered',
-              updates: [
-                {
-                  id: `u${Date.now()}`,
-                  timestamp: new Date().toISOString(),
-                  location: listing.destination || 'Destination',
-                  status: 'Delivered',
-                },
-                ...listing.updates,
-              ],
-            }
-          : listing
-      )
-    );
+  const markDelivered: MarketState['markDelivered'] = async (orderId) => {
+    const order = orders.find((item) => item.id === orderId);
+    await updateDoc(doc(db, 'Orders', orderId), {
+      status: 'delivered',
+      updates: arrayUnion({
+        id: `u${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        location: order?.destination || 'Destination',
+        status: 'Delivered',
+      }),
+    });
   };
 
-  const addDeliveryUpdate: MarketState['addDeliveryUpdate'] = (id, update) => {
-    setListings((prev) =>
-      prev.map((listing) =>
-        listing.id === id
-          ? {
-              ...listing,
-              updates: [
-                { ...update, id: `u${Date.now()}`, timestamp: new Date().toISOString() },
-                ...listing.updates,
-              ],
-            }
-          : listing
-      )
-    );
+  const addDeliveryUpdate: MarketState['addDeliveryUpdate'] = async (orderId, update) => {
+    await updateDoc(doc(db, 'Orders', orderId), {
+      updates: arrayUnion({
+        ...update,
+        id: `u${Date.now()}`,
+        timestamp: new Date().toISOString(),
+      }),
+    });
   };
 
-  const addBuyRequest: MarketState['addBuyRequest'] = (req) => {
-    const newReq: BuyRequest = {
+  const addBuyRequest: MarketState['addBuyRequest'] = async (req) => {
+    await addDoc(collection(db, 'BuyRequests'), {
       ...req,
-      id: `br${Date.now()}`,
       buyerId: myId,
       buyerName: myName,
       createdAt: new Date().toISOString(),
-    };
-    setBuyRequests((prev) => [newReq, ...prev]);
+    });
   };
 
   const saveTransporterProfile = (profile: ServiceProfile) => setTransporterProfile(profile);
@@ -452,8 +477,10 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
         setRoles,
         activeRole,
         setActiveRole,
+        listingsLoading,
         listings,
         addListing,
+        orders,
         buyListing,
         acceptDelivery,
         markDelivered,

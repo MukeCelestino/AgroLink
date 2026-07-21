@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
+  Alert,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 
@@ -23,7 +24,7 @@ export default function LogisticsScreen() {
   const {
     activeRole,
     currentUser,
-    listings,
+    orders,
     transporterProfile,
     saveTransporterProfile,
     acceptDelivery,
@@ -42,10 +43,10 @@ export default function LogisticsScreen() {
   const [updateLocation, setUpdateLocation] = useState('');
   const [updateStatus, setUpdateStatus] = useState('');
 
-  const myDeliveries = listings.filter(
-    (listing) => listing.status === 'in_transit' && listing.transporterId === myId
+  const myDeliveries = orders.filter(
+    (order) => order.status === 'in_transit' && order.transporterId === myId
   );
-  const availableJobs = listings.filter((listing) => listing.status === 'ordered');
+  const availableJobs = orders.filter((order) => order.status === 'ordered');
 
   const handleSaveProfile = () => {
     saveTransporterProfile({ location: profileLocation, coverage: profileCoverage });
@@ -53,12 +54,32 @@ export default function LogisticsScreen() {
     setTimeout(() => setProfileSaved(false), 2000);
   };
 
-  const handlePostUpdate = (id: string) => {
+  const handlePostUpdate = async (id: string) => {
     if (!updateLocation || !updateStatus) return;
-    addDeliveryUpdate(id, { location: updateLocation, status: updateStatus });
-    setUpdateLocation('');
-    setUpdateStatus('');
-    setActiveUpdateId(null);
+    try {
+      await addDeliveryUpdate(id, { location: updateLocation, status: updateStatus });
+      setUpdateLocation('');
+      setUpdateStatus('');
+      setActiveUpdateId(null);
+    } catch (error: any) {
+      Alert.alert('Could not post update', error.message || 'Please try again.');
+    }
+  };
+
+  const handleAcceptDelivery = async (id: string) => {
+    try {
+      await acceptDelivery(id);
+    } catch (error: any) {
+      Alert.alert('Could not accept job', error.message || 'Please try again.');
+    }
+  };
+
+  const handleMarkDelivered = async (id: string) => {
+    try {
+      await markDelivered(id);
+    } catch (error: any) {
+      Alert.alert('Could not mark delivered', error.message || 'Please try again.');
+    }
   };
 
   if (activeRole !== 'transporter') {
@@ -148,13 +169,13 @@ export default function LogisticsScreen() {
           <Text style={styles.emptyText}>No active loads. Accept a job below to get moving.</Text>
         )}
         <View style={styles.list}>
-          {myDeliveries.map((listing) => (
-            <View key={listing.id} style={styles.jobCard}>
+          {myDeliveries.map((order) => (
+            <View key={order.id} style={styles.jobCard}>
               <View style={styles.jobHeaderRow}>
                 <View>
-                  <Text style={styles.jobItem}>{listing.item}</Text>
+                  <Text style={styles.jobItem}>{order.item}</Text>
                   <Text style={styles.jobMeta}>
-                    {listing.quantity} {listing.unit}
+                    {order.quantity} {order.unit}
                   </Text>
                 </View>
                 <View style={styles.statusBadge}>
@@ -163,12 +184,12 @@ export default function LogisticsScreen() {
               </View>
               <View style={styles.routeBlock}>
                 <Text style={styles.routeLabel}>From</Text>
-                <Text style={styles.routeValue}>{listing.origin}</Text>
+                <Text style={styles.routeValue}>{order.origin}</Text>
                 <Text style={[styles.routeLabel, { marginTop: 8 }]}>To</Text>
-                <Text style={styles.routeValue}>{listing.destination}</Text>
+                <Text style={styles.routeValue}>{order.destination}</Text>
               </View>
 
-              {activeUpdateId === listing.id ? (
+              {activeUpdateId === order.id ? (
                 <View style={styles.buyForm}>
                   <TextInput
                     style={styles.input}
@@ -187,7 +208,7 @@ export default function LogisticsScreen() {
                   <View style={styles.row}>
                     <Pressable
                       style={[styles.saveButton, styles.rowInput]}
-                      onPress={() => handlePostUpdate(listing.id)}
+                      onPress={() => handlePostUpdate(order.id)}
                     >
                       <Text style={styles.saveButtonText}>Post update</Text>
                     </Pressable>
@@ -203,13 +224,13 @@ export default function LogisticsScreen() {
                 <View style={styles.row}>
                   <Pressable
                     style={[styles.cancelButton, styles.rowInput]}
-                    onPress={() => setActiveUpdateId(listing.id)}
+                    onPress={() => setActiveUpdateId(order.id)}
                   >
                     <Text style={styles.cancelButtonText}>Update route</Text>
                   </Pressable>
                   <Pressable
                     style={[styles.saveButton, styles.rowInput]}
-                    onPress={() => markDelivered(listing.id)}
+                    onPress={() => handleMarkDelivered(order.id)}
                   >
                     <Text style={styles.saveButtonText}>Delivered</Text>
                   </Pressable>
@@ -227,25 +248,25 @@ export default function LogisticsScreen() {
           <Text style={styles.emptyText}>No delivery work is ready right now.</Text>
         )}
         <View style={styles.list}>
-          {availableJobs.map((listing) => (
-            <View key={listing.id} style={styles.jobRowCard}>
+          {availableJobs.map((order) => (
+            <View key={order.id} style={styles.jobRowCard}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.jobItem}>
-                  {listing.item}{' '}
+                  {order.item}{' '}
                   <Text style={styles.jobMeta}>
-                    · {listing.quantity} {listing.unit}
+                    · {order.quantity} {order.unit}
                   </Text>
                 </Text>
                 <View style={styles.routeInlineRow}>
                   <Feather name="map-pin" size={13} color={EcoColors.lime} />
                   <Text style={styles.routeInlineText}>
-                    {listing.origin} → {listing.destination}
+                    {order.origin} → {order.destination}
                   </Text>
                 </View>
               </View>
               <Pressable
                 style={styles.acceptButton}
-                onPress={() => acceptDelivery(listing.id)}
+                onPress={() => handleAcceptDelivery(order.id)}
               >
                 <Text style={styles.acceptButtonText}>Accept</Text>
               </Pressable>
@@ -400,7 +421,7 @@ const styles = StyleSheet.create({
   },
   routeValue: { fontFamily: EcoFonts.body, fontSize: 13, color: EcoColors.text, marginTop: 2 },
   row: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  rowInput: { flex: 1 },
+  rowInput: { flex: 1, minWidth: 0 },
   cancelButton: {
     borderWidth: 1,
     borderColor: EcoColors.borderStrong,

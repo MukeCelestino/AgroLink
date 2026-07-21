@@ -7,6 +7,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { useMarketStore, Role, ROLE_LABELS } from '../store/MarketStore';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
+import { logoutUser } from '../services/authService';
 import MessagesDrawer from './MessagesDrawer';
 
 type TabKey = 'home' | 'marketplace' | 'logistics' | 'extension';
@@ -30,8 +31,15 @@ export default function AppShell({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isWide = width >= WIDE_BREAKPOINT;
-  const { roles, activeRole, setActiveRole, currentUser, myConversations, openMessages } =
-    useMarketStore();
+  const {
+    roles,
+    activeRole,
+    setActiveRole,
+    currentUser,
+    setCurrentUser,
+    myConversations,
+    openMessages,
+  } = useMarketStore();
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const conversationCount = myConversations().length;
@@ -45,8 +53,14 @@ export default function AppShell({
     setRoleMenuOpen(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setAccountMenuOpen(false);
+    try {
+      await logoutUser();
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+    setCurrentUser(null);
     router.replace('/login');
   };
 

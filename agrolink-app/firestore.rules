@@ -1,0 +1,76 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // User profiles: anyone signed in can read (needed to show seller/buyer
+    // names), but you can only write your own document.
+    match /Users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Marketplace listings: a seller's remaining stock. Buying some of it
+    // never changes who owns the listing — it only shrinks `quantity`/`price`
+    // and, once stock hits 0, flips `status` to 'closed'. The actual
+    // purchase lifecycle (ordered -> in_transit -> delivered) lives on a
+    // separate Order document (see /Orders below).
+    match /Listings/{listingId} {
+      allow read: if request.auth != null;
+
+      // Only the seller can create a listing, and it must start as 'listed'.
+      allow create: if request.auth != null
+        && request.resource.data.sellerId == request.auth.uid
+        && request.resource.data.status == 'listed';
+
+      allow update: if request.auth != null && (
+        // Seller managing their own listing.
+        (resource.data.sellerId == request.auth.uid) ||
+        // Any signed-in buyer completing a (partial) purchase: identity,
+        // item, and pricePerUnit may never change, quantity may only shrink,
+        // and status may only move listed -> listed or listed -> closed.
+        (
+          resource.data.status == 'listed'
+          && (request.resource.data.status == 'listed' || request.resource.data.status == 'closed')
+          && request.resource.data.quantity >= 0
+          && request.resource.data.quantity <= resource.data.quantity
+          && request.resource.data.sellerId == resource.data.sellerId
+          && request.resource.data.item == resource.data.item
+          && request.resource.data.pricePerUnit == resource.data.pricePerUnit
+        )
+      );
+
+      allow delete: if request.auth != null && resource.data.sellerId == request.auth.uid;
+    }
+
+    // A single buyer's purchase against a listing. Created atomically with
+    // the matching Listing quantity decrement (see MarketStore.buyListing).
+    match /Orders/{orderId} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+        && request.resource.data.buyerId == request.auth.uid
+        && request.resource.data.status == 'ordered';
+
+      allow update: if request.auth != null && (
+        // Seller of the underlying listing.
+        (resource.data.sellerId == request.auth.uid) ||
+        // The assigned transporter posting route updates / marking delivered.
+        (resource.data.transporterId == request.auth.uid) ||
+        // Transporter accepting an ordered item (ordered -> in_transit).
+        (resource.data.status == 'ordered'
+          && request.resource.data.status == 'in_transit'
+          && request.resource.data.transporterId == request.auth.uid)
+      );
+    }
+
+    // Buyer "wanted" posts.
+    match /BuyRequests/{requestId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.buyerId == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && resource.data.buyerId == request.auth.uid;
+    }
+  }
+}

@@ -89,21 +89,25 @@ export default function MarketplaceScreen() {
 
   const displayedListings = activeRole === 'seller' ? myListings : availableListings;
 
-  const handlePostListing = () => {
+  const handlePostListing = async () => {
     if (!item || !quantity || !unit || !price || !origin) {
       Alert.alert('Missing info', 'Please fill in every field to post a listing.');
       return;
     }
-    addListing({ item, quantity: Number(quantity), unit, price: Number(price), origin });
-    setItem('');
-    setQuantity('');
-    setUnit('');
-    setPrice('');
-    setOrigin('');
-    setShowForm(false);
+    try {
+      await addListing({ item, quantity: Number(quantity), unit, price: Number(price), origin });
+      setItem('');
+      setQuantity('');
+      setUnit('');
+      setPrice('');
+      setOrigin('');
+      setShowForm(false);
+    } catch (error: any) {
+      Alert.alert('Could not post listing', error.message || 'Please try again.');
+    }
   };
 
-  const handleBuy = (listing: Listing) => {
+  const handleBuy = async (listing: Listing) => {
     if (!buyDestination) {
       Alert.alert('Missing info', 'Please provide a destination address.');
       return;
@@ -112,19 +116,31 @@ export default function MarketplaceScreen() {
       Alert.alert('Missing info', 'Please enter the quantity you want.');
       return;
     }
-    buyListing(listing.id, buyDestination, Number(buyQuantity));
-    setSelectedId(null);
-    setBuyQuantity('');
-    setBuyDestination('');
+    if (Number(buyQuantity) > listing.quantity) {
+      Alert.alert('Too much', `Only ${listing.quantity} ${listing.unit} left.`);
+      return;
+    }
+    try {
+      await buyListing(listing.id, buyDestination, Number(buyQuantity));
+      setSelectedId(null);
+      setBuyQuantity('');
+      setBuyDestination('');
+    } catch (error: any) {
+      Alert.alert('Could not complete purchase', error.message || 'Please try again.');
+    }
   };
 
-  const handleAddWant = () => {
+  const handleAddWant = async () => {
     if (!wantItem || !wantQuantity || !wantUnit) return;
-    addBuyRequest({ item: wantItem, quantity: Number(wantQuantity), unit: wantUnit });
-    setWantItem('');
-    setWantQuantity('');
-    setWantUnit('');
-    setShowWantForm(false);
+    try {
+      await addBuyRequest({ item: wantItem, quantity: Number(wantQuantity), unit: wantUnit });
+      setWantItem('');
+      setWantQuantity('');
+      setWantUnit('');
+      setShowWantForm(false);
+    } catch (error: any) {
+      Alert.alert('Could not post request', error.message || 'Please try again.');
+    }
   };
 
   return (
@@ -361,7 +377,7 @@ export default function MarketplaceScreen() {
                       <View style={styles.buyForm}>
                         <TextInput
                           style={styles.input}
-                          placeholder={`Quantity (${listing.unit})`}
+                          placeholder={`Quantity (${listing.unit}, up to ${listing.quantity})`}
                           placeholderTextColor={EcoColors.placeholder}
                           keyboardType="numeric"
                           value={buyQuantity}
@@ -589,7 +605,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   row: { flexDirection: 'row', gap: 10 },
-  rowInput: { flex: 1 },
+  rowInput: { flex: 1, minWidth: 0 },
   input: {
     fontFamily: EcoFonts.body,
     color: EcoColors.text,
