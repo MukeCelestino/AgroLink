@@ -3,11 +3,30 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // True for a signed-in user whose own Users doc has isAdmin: true.
+    // Used to gate the seller/transporter verification review flow below.
+    function isAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
     // User profiles: anyone signed in can read (needed to show seller/buyer
-    // names), but you can only write your own document.
+    // names), but you can only write your own document. isAdmin,
+    // verifiedRoles, and verificationStatus are admin-only fields — a user
+    // can never set or change them on themselves, only an admin can
+    // (via the VerificationRequests review flow, see below).
     match /Users/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+
+      allow create: if request.auth != null && request.auth.uid == userId
+        && !request.resource.data.keys().hasAny(['isAdmin', 'verifiedRoles', 'verificationStatus']);
+
+      allow update: if request.auth != null && (
+        (request.auth.uid == userId
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['isAdmin', 'verifiedRoles', 'verificationStatus']))
+        || isAdmin()
+      );
     }
 
     // Marketplace listings: a seller's remaining stock. Buying some of it
@@ -71,6 +90,20 @@ service cloud.firestore {
         && request.resource.data.buyerId == request.auth.uid;
       allow update, delete: if request.auth != null
         && resource.data.buyerId == request.auth.uid;
+    }
+
+    // Seller/transporter verification requests. A user can create and read
+    // their own; an admin can read every request and is the only one who
+    // can update one (to approve/reject it) — see verificationService.ts.
+    match /VerificationRequests/{requestId} {
+      allow read: if request.auth != null &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      allow update: if isAdmin();
     }
   }
 }

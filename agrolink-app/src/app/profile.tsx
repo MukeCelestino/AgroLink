@@ -20,6 +20,9 @@ import {
   logoutUser,
 } from '../services/authService';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
+import { ROLE_LABELS } from '../store/MarketStore';
+
+const VERIFIABLE_ROLES: ('seller' | 'transporter')[] = ['seller', 'transporter'];
 
 export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
@@ -34,6 +37,9 @@ export default function ProfileScreen() {
   const [city, setCity] = useState('');
   const [email, setEmail] = useState('');
   const [userTypes, setUserTypes] = useState<string[]>([]);
+  const [verificationStatus, setVerificationStatus] = useState<
+    Record<string, 'pending' | 'approved' | 'rejected'>
+  >({});
 
   useEffect(() => {
     fetchUserProfile();
@@ -61,6 +67,7 @@ export default function ProfileScreen() {
         setProvince(profile.personalInfo?.province || '');
         setCity(profile.personalInfo?.city || '');
         setUserTypes(profile.userTypes || []);
+        setVerificationStatus(profile.verificationStatus || {});
       }
     } catch (error: any) {
       Alert.alert('Error', 'Failed to load profile: ' + error.message);
@@ -154,6 +161,42 @@ export default function ProfileScreen() {
               ))}
             </View>
           )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.verificationHeaderRow}>
+            <Text style={styles.sectionTitle}>Verification</Text>
+            <Pressable onPress={() => router.push('/verification')}>
+              <Text style={styles.verificationLink}>Manage</Text>
+            </Pressable>
+          </View>
+          {VERIFIABLE_ROLES.map((role) => {
+            const status = verificationStatus[role];
+            const label =
+              status === 'approved'
+                ? 'Verified'
+                : status === 'pending'
+                  ? 'Pending review'
+                  : status === 'rejected'
+                    ? 'Rejected'
+                    : 'Not verified';
+            const color =
+              status === 'approved'
+                ? EcoColors.lime
+                : status === 'pending'
+                  ? EcoColors.amber
+                  : status === 'rejected'
+                    ? '#fca5a5'
+                    : EcoColors.muted;
+            return (
+              <View key={role} style={styles.verificationRow}>
+                <Text style={styles.verificationRole}>{ROLE_LABELS[role]}</Text>
+                <View style={[styles.verificationPill, { borderColor: color }]}>
+                  <Text style={[styles.verificationPillText, { color }]}>{label}</Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
 
         <View style={styles.section}>
@@ -328,6 +371,27 @@ const styles = StyleSheet.create({
     color: EcoColors.text,
     marginBottom: 16,
   },
+  verificationHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  verificationLink: { fontFamily: EcoFonts.bodyBold, fontSize: 12, color: EcoColors.lime },
+  verificationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  verificationRole: { fontFamily: EcoFonts.bodySemiBold, fontSize: 13, color: EcoColors.text },
+  verificationPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  verificationPillText: { fontFamily: EcoFonts.bodyBold, fontSize: 11 },
   field: { marginBottom: 14 },
   fieldLabel: {
     fontFamily: EcoFonts.bodyBold,

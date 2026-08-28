@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Mirrors the isAdmin() helper in firestore.rules — looks up the
+    // caller's own Users doc in the (default) Firestore database.
+    function isAdmin() {
+      return request.auth != null &&
+        firestore.get(/databases/(default)/documents/Users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // Verification documents (ID, business license, vehicle registration,
+    // etc.) uploaded when requesting seller/transporter verification.
+    // Only the owner can upload to their own folder; the owner or an admin
+    // reviewing the request can read them back.
+    match /verificationDocuments/{uid}/{requestId}/{fileName} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

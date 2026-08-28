@@ -219,6 +219,18 @@ export default function AppShell({
               <Feather name="settings" size={15} color={EcoColors.muted} />
               <Text style={styles.dropdownItemText}>Edit profile</Text>
             </Pressable>
+            {currentUser?.isAdmin && (
+              <Pressable
+                style={[styles.dropdownItem, styles.dropdownItemLeft]}
+                onPress={() => {
+                  setAccountMenuOpen(false);
+                  router.push('/admin');
+                }}
+              >
+                <Feather name="shield" size={15} color={EcoColors.lime} />
+                <Text style={styles.dropdownItemText}>Admin</Text>
+              </Pressable>
+            )}
             <Pressable
               style={[styles.dropdownItem, styles.dropdownItemLeft]}
               onPress={handleLogout}

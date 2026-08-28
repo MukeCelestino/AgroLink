@@ -7,7 +7,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { auth } from '../firebase/config';
 import { getUserProfile } from '../services/authService';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
-import { CURRENCY, ROLE_LABELS, useMarketStore } from '../store/MarketStore';
+import { CURRENCY, ROLE_LABELS, Role, useMarketStore } from '../store/MarketStore';
 import AppShell from '../components/AppShell';
 
 function timeAgo(iso: string) {
@@ -74,11 +74,19 @@ export default function DashboardScreen() {
 
       if (profile && profile.personalInfo) {
         const fullName = `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`.trim();
-        setCurrentUser({ id: user.uid, name: fullName, email: profile.email });
-        // Every account can switch between all three modes for now. Once
-        // seller/transporter approval exists, restrict `roles` to only the
-        // modes the user is authorized for.
-        setRoles(['buyer', 'seller', 'transporter']);
+        setCurrentUser({
+          id: user.uid,
+          name: fullName,
+          email: profile.email,
+          isAdmin: profile.isAdmin === true,
+        });
+        // `buyer` is open to everyone; `seller`/`transporter` only unlock
+        // once an admin has approved a verification request for that role
+        // (see verificationService.ts and the /verification screen).
+        const verifiedRoles: Role[] = Array.isArray(profile.verifiedRoles)
+          ? profile.verifiedRoles.filter((r: string): r is Role => r === 'seller' || r === 'transporter')
+          : [];
+        setRoles(['buyer', ...verifiedRoles]);
       } else {
         setError('User profile not found');
       }
