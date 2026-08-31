@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 
 import { useMarketStore } from '../store/MarketStore';
+import { SYSTEM_SENDER_ID } from '../services/messagingService';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 
 function timeAgo(iso: string) {
@@ -41,6 +42,10 @@ export default function MessagesDrawer() {
 
   const conversations = myConversations();
   const activeConversation = conversations.find((c) => c.id === activeConversationId) || null;
+  // The AgroLink system channel (verification decisions) is one-way — no
+  // composer is shown, and firestore.rules independently blocks the write
+  // even if someone tried to send one anyway.
+  const isSystemThread = activeConversation?.participantIds.includes(SYSTEM_SENDER_ID) ?? false;
   const thread = messages
     .filter((m) => m.conversationId === activeConversationId)
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -162,23 +167,32 @@ export default function MessagesDrawer() {
                   );
                 }}
               />
-              <View style={styles.composer}>
-                <TextInput
-                  style={styles.composerInput}
-                  placeholder="Write a message…"
-                  placeholderTextColor={EcoColors.placeholder}
-                  value={draft}
-                  onChangeText={setDraft}
-                  multiline
-                />
-                <Pressable
-                  style={[styles.sendButton, !draft.trim() && styles.sendButtonDisabled]}
-                  onPress={handleSend}
-                  disabled={!draft.trim()}
-                >
-                  <Feather name="send" size={16} color={EcoColors.onLime} />
-                </Pressable>
-              </View>
+              {isSystemThread ? (
+                <View style={styles.systemNotice}>
+                  <Feather name="lock" size={12} color={EcoColors.muted} />
+                  <Text style={styles.systemNoticeText}>
+                    Automated notifications from AgroLink — replies aren't monitored.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.composer}>
+                  <TextInput
+                    style={styles.composerInput}
+                    placeholder="Write a message…"
+                    placeholderTextColor={EcoColors.placeholder}
+                    value={draft}
+                    onChangeText={setDraft}
+                    multiline
+                  />
+                  <Pressable
+                    style={[styles.sendButton, !draft.trim() && styles.sendButtonDisabled]}
+                    onPress={handleSend}
+                    disabled={!draft.trim()}
+                  >
+                    <Feather name="send" size={16} color={EcoColors.onLime} />
+                  </Pressable>
+                </View>
+              )}
             </>
           )}
         </KeyboardAvoidingView>
@@ -300,4 +314,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendButtonDisabled: { opacity: 0.4 },
+  systemNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: EcoColors.borderSubtle,
+  },
+  systemNoticeText: {
+    flex: 1,
+    fontFamily: EcoFonts.body,
+    fontSize: 11,
+    color: EcoColors.muted,
+  },
 });

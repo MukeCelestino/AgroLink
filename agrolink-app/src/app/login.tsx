@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -17,20 +16,22 @@ import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
-import { loginUser } from '../services/authService';
+import { loginUser, getAuthErrorMessage } from '../services/authService';
+import { useToast } from '../components/ToastProvider';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 
 export default function LoginScreen() {
+  const { showAlert } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleLogin = async () => {
     try {
       await loginUser(email, password);
-      Alert.alert('Success', 'Logged in successfully');
+      showAlert('Success', 'Logged in successfully', 'success');
       router.replace('/dashboard');
     } catch (error: any) {
-      Alert.alert('Login Failed', error.message);
+      showAlert('Login failed', getAuthErrorMessage(error), 'error');
     }
   };
 

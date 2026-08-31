@@ -7,7 +7,6 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { useMarketStore, Role, ROLE_LABELS } from '../store/MarketStore';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
-import { logoutUser } from '../services/authService';
 import MessagesDrawer from './MessagesDrawer';
 
 type TabKey = 'home' | 'marketplace' | 'logistics' | 'extension';
@@ -36,7 +35,7 @@ export default function AppShell({
     activeRole,
     setActiveRole,
     currentUser,
-    setCurrentUser,
+    signOutAndReset,
     myConversations,
     openMessages,
   } = useMarketStore();
@@ -56,11 +55,10 @@ export default function AppShell({
   const handleLogout = async () => {
     setAccountMenuOpen(false);
     try {
-      await logoutUser();
+      await signOutAndReset();
     } catch (error) {
       console.error('Sign out error:', error);
     }
-    setCurrentUser(null);
     router.replace('/login');
   };
 

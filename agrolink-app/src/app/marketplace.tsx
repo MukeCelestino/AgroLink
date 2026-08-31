@@ -6,13 +6,14 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Alert,
   Image,
   Modal,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import { router } from 'expo-router';
 
 import { CURRENCY, Listing, useMarketStore } from '../store/MarketStore';
+import { useToast } from '../components/ToastProvider';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 import AppShell from '../components/AppShell';
 
@@ -29,6 +30,7 @@ function timeAgo(iso: string) {
 export default function MarketplaceScreen() {
   const {
     activeRole,
+    roles,
     currentUser,
     listings,
     addListing,
@@ -37,6 +39,7 @@ export default function MarketplaceScreen() {
     addBuyRequest,
     openConversationWith,
   } = useMarketStore();
+  const { showAlert } = useToast();
   const myId = currentUser?.id || 'me';
 
   // Seller: new listing form
@@ -91,7 +94,7 @@ export default function MarketplaceScreen() {
 
   const handlePostListing = async () => {
     if (!item || !quantity || !unit || !price || !origin) {
-      Alert.alert('Missing info', 'Please fill in every field to post a listing.');
+      showAlert('Missing info', 'Please fill in every field to post a listing.', 'error');
       return;
     }
     try {
@@ -103,21 +106,21 @@ export default function MarketplaceScreen() {
       setOrigin('');
       setShowForm(false);
     } catch (error: any) {
-      Alert.alert('Could not post listing', error.message || 'Please try again.');
+      showAlert('Could not post listing', error.message || 'Please try again.', 'error');
     }
   };
 
   const handleBuy = async (listing: Listing) => {
     if (!buyDestination) {
-      Alert.alert('Missing info', 'Please provide a destination address.');
+      showAlert('Missing info', 'Please provide a destination address.', 'error');
       return;
     }
     if (!buyQuantity || Number(buyQuantity) <= 0) {
-      Alert.alert('Missing info', 'Please enter the quantity you want.');
+      showAlert('Missing info', 'Please enter the quantity you want.', 'error');
       return;
     }
     if (Number(buyQuantity) > listing.quantity) {
-      Alert.alert('Too much', `Only ${listing.quantity} ${listing.unit} left.`);
+      showAlert('Too much', `Only ${listing.quantity} ${listing.unit} left.`, 'error');
       return;
     }
     try {
@@ -126,7 +129,7 @@ export default function MarketplaceScreen() {
       setBuyQuantity('');
       setBuyDestination('');
     } catch (error: any) {
-      Alert.alert('Could not complete purchase', error.message || 'Please try again.');
+      showAlert('Could not complete purchase', error.message || 'Please try again.', 'error');
     }
   };
 
@@ -139,7 +142,7 @@ export default function MarketplaceScreen() {
       setWantUnit('');
       setShowWantForm(false);
     } catch (error: any) {
-      Alert.alert('Could not post request', error.message || 'Please try again.');
+      showAlert('Could not post request', error.message || 'Please try again.', 'error');
     }
   };
 
@@ -253,6 +256,16 @@ export default function MarketplaceScreen() {
               </View>
             )}
           </>
+        )}
+
+        {activeRole === 'buyer' && !roles.includes('seller') && (
+          <Pressable style={styles.infoBanner} onPress={() => router.push('/verification')}>
+            <Feather name="user-check" size={18} color={EcoColors.lime} />
+            <Text style={styles.infoBannerText}>
+              Want to sell here? Get verified as a seller to start listing produce.
+            </Text>
+            <Feather name="arrow-right" size={14} color={EcoColors.lime} />
+          </Pressable>
         )}
 
         {activeRole === 'buyer' && (

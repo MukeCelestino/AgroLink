@@ -7,7 +7,6 @@ import {
   Pressable,
   Image,
   TextInput,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,10 +22,12 @@ import {
   reviewVerificationRequest,
 } from '../../services/verificationService';
 import { ROLE_LABELS } from '../../store/MarketStore';
+import { useToast } from '../../components/ToastProvider';
 import { EcoColors, EcoFonts } from '../../constants/ecoTheme';
 
 export default function AdminVerificationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { showAlert } = useToast();
 
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -78,7 +79,7 @@ export default function AdminVerificationDetailScreen() {
         setApplicant(profile);
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to load request.');
+      showAlert('Error', error.message || 'Failed to load request.', 'error');
     } finally {
       setLoading(false);
     }
@@ -87,7 +88,7 @@ export default function AdminVerificationDetailScreen() {
   const handleDecision = async (approve: boolean) => {
     if (!request) return;
     if (!approve && !reviewerNotes.trim()) {
-      Alert.alert('Add a reason', 'Let the applicant know why the request was rejected.');
+      showAlert('Add a reason', 'Let the applicant know why the request was rejected.', 'error');
       return;
     }
     setDeciding(approve ? 'approve' : 'reject');
@@ -98,10 +99,14 @@ export default function AdminVerificationDetailScreen() {
         reviewerName,
         reviewerNotes: reviewerNotes.trim(),
       });
-      Alert.alert(approve ? 'Approved' : 'Rejected', `${request.userName} has been notified.`);
+      showAlert(
+        approve ? 'Approved' : 'Rejected',
+        `${request.userName} has been notified.`,
+        'success'
+      );
       router.replace('/admin');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to submit decision.');
+      showAlert('Error', error.message || 'Failed to submit decision.', 'error');
     } finally {
       setDeciding(null);
     }

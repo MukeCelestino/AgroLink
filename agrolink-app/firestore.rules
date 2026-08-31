@@ -10,6 +10,16 @@ service cloud.firestore {
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.isAdmin == true;
     }
 
+    // True for a signed-in user whose own Users doc lists `role` in
+    // verifiedRoles (set only by an admin approving a VerificationRequest —
+    // see the review flow above). This is the real backstop: the client UI
+    // already hides seller/transporter mode from unverified users, but this
+    // is what stops a direct Firestore write from bypassing that.
+    function isVerifiedFor(role) {
+      return request.auth != null &&
+        role in get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.verifiedRoles;
+    }
+
     // User profiles: anyone signed in can read (needed to show seller/buyer
     // names), but you can only write your own document. isAdmin,
     // verifiedRoles, and verificationStatus are admin-only fields — a user
@@ -37,10 +47,11 @@ service cloud.firestore {
     match /Listings/{listingId} {
       allow read: if request.auth != null;
 
-      // Only the seller can create a listing, and it must start as 'listed'.
+      // Only a verified seller can create a listing, and it must start as 'listed'.
       allow create: if request.auth != null
         && request.resource.data.sellerId == request.auth.uid
-        && request.resource.data.status == 'listed';
+        && request.resource.data.status == 'listed'
+        && isVerifiedFor('seller');
 
       allow update: if request.auth != null && (
         // Seller managing their own listing.
@@ -76,10 +87,11 @@ service cloud.firestore {
         (resource.data.sellerId == request.auth.uid) ||
         // The assigned transporter posting route updates / marking delivered.
         (resource.data.transporterId == request.auth.uid) ||
-        // Transporter accepting an ordered item (ordered -> in_transit).
+        // A verified transporter accepting an ordered item (ordered -> in_transit).
         (resource.data.status == 'ordered'
           && request.resource.data.status == 'in_transit'
-          && request.resource.data.transporterId == request.auth.uid)
+          && request.resource.data.transporterId == request.auth.uid
+          && isVerifiedFor('transporter'))
       );
     }
 
@@ -104,6 +116,53 @@ service cloud.firestore {
         && request.resource.data.status == 'pending';
 
       allow update: if isAdmin();
+    }
+
+    // Real-time messaging (see messagingService.ts). One thread per
+    // participant pair. 'agrolink-system' is a reserved, non-auth sender id
+    // used for one-way verification-decision notices — every rule below
+    // treats a conversation containing it as admin-only to write to, which
+    // is what makes that channel one-way server-side, not just in the UI.
+    match /Conversations/{conversationId} {
+      allow read: if request.auth != null && (
+        request.auth.uid in resource.data.participantIds ||
+        (isAdmin() && 'agrolink-system' in resource.data.participantIds)
+      );
+
+      // Regular users can start conversations among themselves; only an
+      // admin (the verification review flow) can create one involving the
+      // system sender.
+      allow create: if request.auth != null && (
+        (request.auth.uid in request.resource.data.participantIds
+          && !('agrolink-system' in request.resource.data.participantIds))
+        || (isAdmin() && 'agrolink-system' in request.resource.data.participantIds)
+      );
+
+      // Same split for the lastMessage/lastMessageAt bookkeeping update.
+      allow update: if request.auth != null && (
+        (request.auth.uid in resource.data.participantIds
+          && !('agrolink-system' in resource.data.participantIds))
+        || (isAdmin() && 'agrolink-system' in resource.data.participantIds)
+      );
+
+      match /Messages/{messageId} {
+        allow read: if request.auth != null && (
+          request.auth.uid in get(/databases/$(database)/documents/Conversations/$(conversationId)).data.participantIds ||
+          isAdmin()
+        );
+
+        // A normal participant can post into a normal conversation, but
+        // never into one that includes the system sender — that's
+        // admin-only, and only as senderId == 'agrolink-system'. This is
+        // what actually blocks a user from replying in a system thread,
+        // even via a raw Firestore write.
+        allow create: if request.auth != null && (
+          (request.resource.data.senderId == request.auth.uid
+            && request.auth.uid in get(/databases/$(database)/documents/Conversations/$(conversationId)).data.participantIds
+            && !('agrolink-system' in get(/databases/$(database)/documents/Conversations/$(conversationId)).data.participantIds))
+          || (isAdmin() && request.resource.data.senderId == 'agrolink-system')
+        );
+      }
     }
   }
 }

@@ -16,6 +16,7 @@ import {
 } from '@expo-google-fonts/manrope';
 
 import { MarketStoreProvider } from '../store/MarketStore';
+import { ToastProvider } from '../components/ToastProvider';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -45,8 +46,10 @@ export default function RootLayout() {
   }
 
   return (
-    <MarketStoreProvider>
-      <Stack screenOptions={{ headerShown: false }} />
-    </MarketStoreProvider>
+    <ToastProvider>
+      <MarketStoreProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </MarketStoreProvider>
+    </ToastProvider>
   );
 }

@@ -6,7 +6,6 @@ import {
   TextInput,
   Pressable,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,17 +13,16 @@ import { router } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 
 import { auth } from '../firebase/config';
-import {
-  getUserProfile,
-  updateUserProfile,
-  logoutUser,
-} from '../services/authService';
+import { getUserProfile, updateUserProfile } from '../services/authService';
+import { useToast } from '../components/ToastProvider';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
-import { ROLE_LABELS } from '../store/MarketStore';
+import { ROLE_LABELS, useMarketStore } from '../store/MarketStore';
 
 const VERIFIABLE_ROLES: ('seller' | 'transporter')[] = ['seller', 'transporter'];
 
 export default function ProfileScreen() {
+  const { signOutAndReset } = useMarketStore();
+  const { showAlert } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -51,7 +49,7 @@ export default function ProfileScreen() {
       const currentUser = auth.currentUser;
 
       if (!currentUser) {
-        Alert.alert('Error', 'No user logged in');
+        showAlert('Error', 'No user logged in', 'error');
         return;
       }
 
@@ -70,7 +68,7 @@ export default function ProfileScreen() {
         setVerificationStatus(profile.verificationStatus || {});
       }
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to load profile: ' + error.message);
+      showAlert('Error', 'Failed to load profile: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -78,7 +76,7 @@ export default function ProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!firstName || !lastName || !phoneNumber) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showAlert('Error', 'Please fill in all required fields', 'error');
       return;
     }
 
@@ -86,7 +84,7 @@ export default function ProfileScreen() {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        Alert.alert('Error', 'No user logged in');
+        showAlert('Error', 'No user logged in', 'error');
         return;
       }
 
@@ -103,9 +101,9 @@ export default function ProfileScreen() {
         },
       });
 
-      Alert.alert('Success', 'Profile updated successfully');
+      showAlert('Success', 'Profile updated successfully', 'success');
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to save profile: ' + error.message);
+      showAlert('Error', 'Failed to save profile: ' + error.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -113,10 +111,10 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     try {
-      await logoutUser();
+      await signOutAndReset();
       router.replace('/login');
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to logout: ' + error.message);
+      showAlert('Error', 'Failed to logout: ' + error.message, 'error');
     }
   };
 

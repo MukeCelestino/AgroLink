@@ -12,6 +12,15 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '../firebase/config';
+import { logoutUser } from '../services/authService';
+import {
+  Conversation,
+  Message,
+  findOrCreateConversation,
+  subscribeToMyConversations,
+  subscribeToConversationMessages,
+  postMessage,
+} from '../services/messagingService';
 
 export const CURRENCY = 'K';
 
@@ -108,23 +117,6 @@ export interface ExtensionProvider {
   coverage: Coverage;
 }
 
-export interface Conversation {
-  id: string;
-  participantIds: string[];
-  participantNames: Record<string, string>;
-  subject?: string;
-  createdAt: string;
-}
-
-export interface Message {
-  id: string;
-  conversationId: string;
-  senderId: string;
-  senderName: string;
-  text: string;
-  timestamp: string;
-}
-
 export interface CurrentUser {
   id: string;
   name: string;
@@ -162,6 +154,7 @@ const initialExtensionProviders: ExtensionProvider[] = [
 interface MarketState {
   currentUser: CurrentUser | null;
   setCurrentUser: (user: CurrentUser | null) => void;
+  signOutAndReset: () => Promise<void>;
 
   roles: Role[];
   setRoles: (roles: Role[]) => void;
@@ -198,7 +191,7 @@ interface MarketState {
   conversations: Conversation[];
   messages: Message[];
   myConversations: () => Conversation[];
-  openConversationWith: (otherPartyId: string, otherPartyName: string, subject?: string) => string;
+  openConversationWith: (otherPartyId: string, otherPartyName: string, subject?: string) => void;
   sendMessage: (conversationId: string, text: string) => void;
   messagesOpen: boolean;
   activeConversationId: string | null;
@@ -211,7 +204,10 @@ const MarketContext = createContext<MarketState | undefined>(undefined);
 
 export function MarketStoreProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [roles, setRoles] = useState<Role[]>(['buyer', 'seller', 'transporter']);
+  // Starts buyer-only (the one role that needs no verification) until the
+  // dashboard's profile fetch resolves and adds any verifiedRoles — fails
+  // closed instead of briefly exposing Seller/Transporter mode by default.
+  const [roles, setRoles] = useState<Role[]>(['buyer']);
   const [activeRole, setActiveRole] = useState<Role>('buyer');
 
   const [listings, setListings] = useState<Listing[]>([]);
@@ -303,6 +299,30 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
     );
     return unsubscribe;
   }, [currentUser]);
+
+  // Conversations the signed-in user is part of. Real-time and Firestore-backed
+  // (see messagingService.ts) — this used to be plain local state that never
+  // left the sender's own session.
+  useEffect(() => {
+    if (!currentUser) {
+      setConversations([]);
+      return;
+    }
+    return subscribeToMyConversations(currentUser.id, setConversations);
+  }, [currentUser]);
+
+  // Only the active thread's messages are loaded, not every message ever —
+  // matches what MessagesDrawer actually renders at a time. Also depends on
+  // currentUser (not just activeConversationId) so this tears down the
+  // instant someone signs out, rather than staying subscribed with a now-
+  // invalid auth token and logging a permission-denied error.
+  useEffect(() => {
+    if (!currentUser || !activeConversationId) {
+      setMessages([]);
+      return;
+    }
+    return subscribeToConversationMessages(activeConversationId, setMessages);
+  }, [currentUser, activeConversationId]);
 
   const addListing: MarketState['addListing'] = async (data) => {
     const pricePerUnit = data.price / data.quantity;
@@ -426,47 +446,40 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
   };
   const closeMessages = () => setMessagesOpen(false);
 
-  const myConversations = () =>
-    conversations.filter((c) => c.participantIds.includes(myId));
+  // Clears local state — which unsubscribes every Firestore listener via
+  // their [currentUser]/[activeConversationId] effect dependencies — before
+  // actually signing out, rather than after. Doing it in the other order
+  // races the auth token invalidating against React tearing listeners down,
+  // which is what caused stray "permission-denied" console errors. Both
+  // AppShell's and Profile's logout buttons should call this instead of
+  // calling authService.logoutUser() directly, so behavior stays consistent.
+  const signOutAndReset = async () => {
+    setMessagesOpen(false);
+    setActiveConversationId(null);
+    setCurrentUser(null);
+    await logoutUser();
+  };
+
+  // The Firestore query behind `conversations` is already scoped to the
+  // signed-in user (see the subscription effect above).
+  const myConversations = () => conversations;
 
   const openConversationWith: MarketState['openConversationWith'] = (
     otherPartyId,
     otherPartyName,
     subject
   ) => {
-    const existing = conversations.find(
-      (c) => c.participantIds.includes(myId) && c.participantIds.includes(otherPartyId)
-    );
-    if (existing) {
-      setActiveConversationId(existing.id);
-      setMessagesOpen(true);
-      return existing.id;
-    }
-    const id = `c${Date.now()}`;
-    const convo: Conversation = {
-      id,
-      participantIds: [myId, otherPartyId],
-      participantNames: { [myId]: myName, [otherPartyId]: otherPartyName },
-      subject,
-      createdAt: new Date().toISOString(),
-    };
-    setConversations((prev) => [convo, ...prev]);
-    setActiveConversationId(id);
     setMessagesOpen(true);
-    return id;
+    findOrCreateConversation(myId, myName, otherPartyId, otherPartyName, subject)
+      .then((id) => setActiveConversationId(id))
+      .catch((error) => console.error('openConversationWith error:', error));
   };
 
   const sendMessage: MarketState['sendMessage'] = (conversationId, text) => {
     if (!text.trim()) return;
-    const msg: Message = {
-      id: `m${Date.now()}`,
-      conversationId,
-      senderId: myId,
-      senderName: myName,
-      text: text.trim(),
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, msg]);
+    postMessage(conversationId, myId, myName, text.trim()).catch((error) =>
+      console.error('sendMessage error:', error)
+    );
   };
 
   return (
@@ -474,6 +487,7 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
       value={{
         currentUser,
         setCurrentUser,
+        signOutAndReset,
         roles,
         setRoles,
         activeRole,

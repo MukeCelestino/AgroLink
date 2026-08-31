@@ -6,15 +6,16 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Alert,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import { router } from 'expo-router';
 
 import {
   useMarketStore,
   Coverage,
   COVERAGE_LABELS,
 } from '../store/MarketStore';
+import { useToast } from '../components/ToastProvider';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 import AppShell from '../components/AppShell';
 
@@ -23,6 +24,7 @@ const coverageOptions: Coverage[] = ['district', 'province', 'country', 'cross_b
 export default function LogisticsScreen() {
   const {
     activeRole,
+    roles,
     currentUser,
     orders,
     transporterProfile,
@@ -31,6 +33,7 @@ export default function LogisticsScreen() {
     markDelivered,
     addDeliveryUpdate,
   } = useMarketStore();
+  const { showAlert } = useToast();
   const myId = currentUser?.id || 'me';
 
   const [profileLocation, setProfileLocation] = useState(transporterProfile?.location ?? '');
@@ -62,7 +65,7 @@ export default function LogisticsScreen() {
       setUpdateStatus('');
       setActiveUpdateId(null);
     } catch (error: any) {
-      Alert.alert('Could not post update', error.message || 'Please try again.');
+      showAlert('Could not post update', error.message || 'Please try again.', 'error');
     }
   };
 
@@ -70,7 +73,7 @@ export default function LogisticsScreen() {
     try {
       await acceptDelivery(id);
     } catch (error: any) {
-      Alert.alert('Could not accept job', error.message || 'Please try again.');
+      showAlert('Could not accept job', error.message || 'Please try again.', 'error');
     }
   };
 
@@ -78,11 +81,12 @@ export default function LogisticsScreen() {
     try {
       await markDelivered(id);
     } catch (error: any) {
-      Alert.alert('Could not mark delivered', error.message || 'Please try again.');
+      showAlert('Could not mark delivered', error.message || 'Please try again.', 'error');
     }
   };
 
   if (activeRole !== 'transporter') {
+    const isVerified = roles.includes('transporter');
     return (
       <AppShell active="logistics">
         <View style={styles.gateWrap}>
@@ -91,8 +95,15 @@ export default function LogisticsScreen() {
           </View>
           <Text style={styles.gateTitle}>Transporter view only.</Text>
           <Text style={styles.gateSubtext}>
-            Switch to your Transporter mode to manage a service area and accept delivery work.
+            {isVerified
+              ? 'Switch to your Transporter mode to manage a service area and accept delivery work.'
+              : "You'll need to be a verified transporter to manage a service area and accept delivery work."}
           </Text>
+          {!isVerified && (
+            <Pressable style={styles.gateButton} onPress={() => router.push('/verification')}>
+              <Text style={styles.gateButtonText}>Get verified</Text>
+            </Pressable>
+          )}
         </View>
       </AppShell>
     );
@@ -305,6 +316,14 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     maxWidth: 320,
   },
+  gateButton: {
+    backgroundColor: EcoColors.lime,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 20,
+  },
+  gateButtonText: { fontFamily: EcoFonts.bodyBold, fontSize: 13, color: EcoColors.onLime },
   backLink: {
     flexDirection: 'row',
     alignItems: 'center',

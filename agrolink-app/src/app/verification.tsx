@@ -6,7 +6,6 @@ import {
   TextInput,
   Pressable,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,11 +24,13 @@ import {
   subscribeToMyVerificationRequests,
 } from '../services/verificationService';
 import { ROLE_LABELS } from '../store/MarketStore';
+import { useToast } from '../components/ToastProvider';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 
 const VERIFIABLE_ROLES: VerifiableRole[] = ['seller', 'transporter'];
 
 export default function VerificationScreen() {
+  const { showAlert } = useToast();
   const [uid, setUid] = useState<string | null>(null);
   const [userName, setUserName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -86,7 +87,7 @@ export default function VerificationScreen() {
       const picked = await pickImageDocument();
       if (picked) setFiles((prev) => [...prev, picked]);
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showAlert('Error', error.message, 'error');
     }
   };
 
@@ -95,7 +96,7 @@ export default function VerificationScreen() {
       const picked = await pickFileDocument();
       if (picked) setFiles((prev) => [...prev, picked]);
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showAlert('Error', error.message, 'error');
     }
   };
 
@@ -106,16 +107,16 @@ export default function VerificationScreen() {
   const handleSubmit = async (role: VerifiableRole) => {
     if (!uid) return;
     if (files.length === 0) {
-      Alert.alert('Add a document', 'Attach at least one photo or file before submitting.');
+      showAlert('Add a document', 'Attach at least one photo or file before submitting.', 'error');
       return;
     }
     setSubmitting(true);
     try {
       await submitVerificationRequest(uid, userName || 'AgroLink user', role, files, notes);
-      Alert.alert('Request submitted', 'An admin will review your documents shortly.');
+      showAlert('Request submitted', 'An admin will review your documents shortly.', 'success');
       resetForm();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to submit request.');
+      showAlert('Error', error.message || 'Failed to submit request.', 'error');
     } finally {
       setSubmitting(false);
     }

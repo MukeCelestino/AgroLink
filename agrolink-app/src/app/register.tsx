@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  Alert,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
@@ -14,7 +13,8 @@ import { router } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
-import { registerUser } from '../services/authService';
+import { registerUser, getAuthErrorMessage } from '../services/authService';
+import { useToast } from '../components/ToastProvider';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 
 const userTypeOptions = [
@@ -24,6 +24,7 @@ const userTypeOptions = [
 ];
 
 export default function RegisterScreen() {
+  const { showAlert } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -47,23 +48,23 @@ export default function RegisterScreen() {
 
   const validateForm = () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Email and password are required');
+      showAlert('Error', 'Email and password are required', 'error');
       return false;
     }
     if (!firstName || !lastName) {
-      Alert.alert('Error', 'First and last name are required');
+      showAlert('Error', 'First and last name are required', 'error');
       return false;
     }
     if (!phoneNumber) {
-      Alert.alert('Error', 'Phone number is required');
+      showAlert('Error', 'Phone number is required', 'error');
       return false;
     }
     if (!address || !country || !province || !city) {
-      Alert.alert('Error', 'All location fields are required');
+      showAlert('Error', 'All location fields are required', 'error');
       return false;
     }
     if (userTypes.length === 0) {
-      Alert.alert('Error', 'Please select at least one user type');
+      showAlert('Error', 'Please select at least one user type', 'error');
       return false;
     }
     return true;
@@ -85,10 +86,10 @@ export default function RegisterScreen() {
         userTypes,
       });
 
-      Alert.alert('Success', 'Account created successfully');
+      showAlert('Success', 'Account created successfully', 'success');
       router.replace('/dashboard');
     } catch (error: any) {
-      Alert.alert('Registration Failed', error.message);
+      showAlert('Registration failed', getAuthErrorMessage(error), 'error');
     } finally {
       setLoading(false);
     }

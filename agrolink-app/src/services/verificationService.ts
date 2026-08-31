@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 
 import { db, storage } from '../firebase/config';
+import { notifyVerificationDecision } from './messagingService';
 
 // ==================== TYPES ====================
 
@@ -230,5 +231,12 @@ export const reviewVerificationRequest = async (
   await updateDoc(doc(db, 'Users', request.userId), {
     [`verificationStatus.${request.role}`]: status,
     ...(decision.approve ? { verifiedRoles: arrayUnion(request.role) } : {}),
+  });
+
+  // Let the applicant know via a real (one-way) system message in their
+  // Messages drawer — see messagingService.ts.
+  await notifyVerificationDecision(request, {
+    approve: decision.approve,
+    reviewerNotes: decision.reviewerNotes,
   });
 };

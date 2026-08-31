@@ -10,6 +10,31 @@ import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 
 import { auth, db } from '../firebase/config';
 
+// ==================== ERROR MESSAGES ====================
+
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  'auth/invalid-credential': 'Incorrect email or password.',
+  'auth/wrong-password': 'Incorrect email or password.',
+  'auth/user-not-found': 'No account found with that email.',
+  'auth/invalid-email': 'That email address looks invalid.',
+  'auth/user-disabled': 'This account has been disabled.',
+  'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
+  'auth/network-request-failed': 'Network error — check your connection and try again.',
+  'auth/email-already-in-use': 'An account with that email already exists.',
+  'auth/weak-password': 'Please choose a stronger password (at least 6 characters).',
+  'auth/missing-password': 'Please enter a password.',
+};
+
+// Firebase's raw error.message (e.g. "Firebase: Error (auth/invalid-credential).")
+// is not something to show a user. This maps the known auth error codes to
+// plain language, falling back to the raw message for anything unmapped.
+export const getAuthErrorMessage = (error: any): string => {
+  if (error?.code && AUTH_ERROR_MESSAGES[error.code]) {
+    return AUTH_ERROR_MESSAGES[error.code];
+  }
+  return error?.message || 'Something went wrong. Please try again.';
+};
+
 // ==================== EMAIL/PASSWORD ====================
 
 export const registerUser = async (
@@ -26,186 +51,67 @@ export const registerUser = async (
     userTypes: string[];
   }
 ) => {
-  try {
-    console.log('=== Starting Registration ===');
-    console.log('Email:', email);
-    console.log('Personal Info:', personalInfo);
+  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+  const uid = userCredential.user.uid;
 
-    // Create Auth account
-    console.log('Creating Firebase Auth account...');
-    const userCredential = await createUserWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
-    const uid = userCredential.user.uid;
-    console.log('✅ Auth account created. UID:', uid);
+  const userData = {
+    uid,
+    email,
+    phoneNumber: personalInfo.phoneNumber,
+    userTypes: personalInfo.userTypes,
+    personalInfo: {
+      firstName: personalInfo.firstName,
+      lastName: personalInfo.lastName,
+      profilePhoto: '',
+      address: personalInfo.address,
+      country: personalInfo.country,
+      province: personalInfo.province,
+      city: personalInfo.city,
+    },
+    registrationFeeStatus: 'unpaid',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 
-    // Save user profile to Firestore
-    console.log('Saving user profile to Firestore...');
-    console.log('Collection: Users, Document ID:', uid);
+  await setDoc(doc(db, 'Users', uid), userData);
 
-    const userData = {
-      uid,
-      email,
-      phoneNumber: personalInfo.phoneNumber,
-      userTypes: personalInfo.userTypes,
-      personalInfo: {
-        firstName: personalInfo.firstName,
-        lastName: personalInfo.lastName,
-        profilePhoto: '',
-        address: personalInfo.address,
-        country: personalInfo.country,
-        province: personalInfo.province,
-        city: personalInfo.city,
-      },
-      registrationFeeStatus: 'unpaid',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    console.log('Data to save:', userData);
-
-    await setDoc(doc(db, 'Users', uid), userData);
-
-    console.log('✅ Firestore document created successfully');
-    console.log('=== Registration Complete ===');
-
-    return userCredential;
-  } catch (error: any) {
-    console.error('❌ Registration Error');
-    console.error('Error Code:', error.code);
-    console.error('Error Message:', error.message);
-    console.error('Full Error:', error);
-    throw error;
-  }
+  return userCredential;
 };
 
-export const loginUser = async (
-  email: string,
-  password: string
-) => {
-  try {
-    console.log('=== Starting Login ===');
-    console.log('Email:', email);
-
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    
-    console.log('✅ Login successful. UID:', userCredential.user.uid);
-    console.log('=== Login Complete ===');
-
-    return userCredential;
-  } catch (error: any) {
-    console.error('❌ Login Error');
-    console.error('Error Code:', error.code);
-    console.error('Error Message:', error.message);
-    throw error;
-  }
+export const loginUser = async (email: string, password: string) => {
+  return signInWithEmailAndPassword(auth, email, password);
 };
 
 export const logoutUser = async () => {
-  try {
-    console.log('=== Logging Out ===');
-    await signOut(auth);
-    console.log('✅ Logout successful');
-  } catch (error: any) {
-    console.error('❌ Logout Error:', error.message);
-    throw error;
-  }
+  await signOut(auth);
 };
 
 // ==================== PHONE AUTH ====================
 
 export const sendPhoneOTP = async (phoneNumber: string) => {
-  try {
-    console.log('=== Sending Phone OTP ===');
-    console.log('Phone Number:', phoneNumber);
-
-    const phoneAuthProvider = new PhoneAuthProvider(auth);
-    const verificationId = await phoneAuthProvider.verifyPhoneNumber(
-      phoneNumber,
-      null
-    );
-
-    console.log('✅ OTP sent. Verification ID:', verificationId);
-    return verificationId;
-  } catch (error: any) {
-    console.error('❌ Phone OTP Error:', error.message);
-    throw error;
-  }
+  const phoneAuthProvider = new PhoneAuthProvider(auth);
+  return phoneAuthProvider.verifyPhoneNumber(phoneNumber, undefined);
 };
 
 export const verifyPhoneOTP = async (verificationId: string, otp: string) => {
-  try {
-    console.log('=== Verifying Phone OTP ===');
-
-    const credential = PhoneAuthProvider.credential(verificationId, otp);
-    const userCredential = await signInWithCredential(auth, credential);
-
-    console.log('✅ Phone OTP verified. UID:', userCredential.user.uid);
-    return userCredential;
-  } catch (error: any) {
-    console.error('❌ Phone OTP Verification Error:', error.message);
-    throw error;
-  }
+  const credential = PhoneAuthProvider.credential(verificationId, otp);
+  return signInWithCredential(auth, credential);
 };
 
 // ==================== USER PROFILE ====================
 
 export const getUserProfile = async (uid: string) => {
-  try {
-    console.log('=== Fetching User Profile ===');
-    console.log('UID:', uid);
-
-    const docSnap = await getDoc(doc(db, 'Users', uid));
-
-    if (docSnap.exists()) {
-      console.log('✅ Profile found');
-      console.log('Profile data:', docSnap.data());
-      return docSnap.data();
-    } else {
-      console.log('❌ No profile document found');
-      return null;
-    }
-  } catch (error: any) {
-    console.error('❌ Get Profile Error:', error.message);
-    throw error;
-  }
+  const docSnap = await getDoc(doc(db, 'Users', uid));
+  return docSnap.exists() ? docSnap.data() : null;
 };
 
-export const updateUserProfile = async (
-  uid: string,
-  updates: Partial<any>
-) => {
-  try {
-    console.log('=== Updating User Profile ===');
-    console.log('UID:', uid);
-    console.log('Updates:', updates);
-
-    await updateDoc(doc(db, 'Users', uid), {
-      ...updates,
-      updatedAt: new Date(),
-    });
-
-    console.log('✅ Profile updated successfully');
-  } catch (error: any) {
-    console.error('❌ Update Profile Error:', error.message);
-    throw error;
-  }
+export const updateUserProfile = async (uid: string, updates: Partial<any>) => {
+  await updateDoc(doc(db, 'Users', uid), {
+    ...updates,
+    updatedAt: new Date(),
+  });
 };
 
 export const markRegistrationFeePaid = async (uid: string) => {
-  try {
-    console.log('=== Marking Registration Fee as Paid ===');
-    console.log('UID:', uid);
-
-    await updateUserProfile(uid, {
-      registrationFeeStatus: 'paid',
-    });
-
-    console.log('✅ Registration fee marked as paid');
-  } catch (error: any) {
-    console.error('❌ Mark Fee Paid Error:', error.message);
-    throw error;
-  }
+  await updateUserProfile(uid, { registrationFeeStatus: 'paid' });
 };
