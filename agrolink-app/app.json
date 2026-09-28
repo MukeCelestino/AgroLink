@@ -34,6 +34,12 @@
             "imageWidth": 76
           }
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "AgroLink uses your location to share live delivery updates with buyers and sellers while you're delivering an order."
+        }
       ]
     ],
     "experiments": {

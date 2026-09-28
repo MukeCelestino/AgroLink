@@ -50,6 +50,10 @@ export interface DeliveryUpdate {
   timestamp: string;
   location: string;
   status: string;
+  // Present when the update came from a GPS ping (see logistics.tsx's
+  // "Share my location" toggle) rather than a manually typed note.
+  lat?: number;
+  lng?: number;
 }
 
 // A Listing is a seller's remaining stock. Buying some of it never mutates
@@ -176,7 +180,10 @@ interface MarketState {
   buyListing: (listingId: string, destination: string, orderedQuantity: number) => Promise<void>;
   acceptDelivery: (orderId: string) => Promise<void>;
   markDelivered: (orderId: string) => Promise<void>;
-  addDeliveryUpdate: (orderId: string, update: { location: string; status: string }) => Promise<void>;
+  addDeliveryUpdate: (
+    orderId: string,
+    update: { location: string; status: string; lat?: number; lng?: number }
+  ) => Promise<void>;
 
   buyRequests: BuyRequest[];
   addBuyRequest: (req: { item: string; quantity: number; unit: string; notes?: string }) => Promise<void>;
