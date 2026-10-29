@@ -1,11 +1,4 @@
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  PhoneAuthProvider,
-  signInWithCredential,
-  updateProfile,
-} from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 
 import { auth, db } from '../firebase/config';
@@ -86,18 +79,6 @@ export const logoutUser = async () => {
   await signOut(auth);
 };
 
-// ==================== PHONE AUTH ====================
-
-export const sendPhoneOTP = async (phoneNumber: string) => {
-  const phoneAuthProvider = new PhoneAuthProvider(auth);
-  return phoneAuthProvider.verifyPhoneNumber(phoneNumber, undefined);
-};
-
-export const verifyPhoneOTP = async (verificationId: string, otp: string) => {
-  const credential = PhoneAuthProvider.credential(verificationId, otp);
-  return signInWithCredential(auth, credential);
-};
-
 // ==================== USER PROFILE ====================
 
 export const getUserProfile = async (uid: string) => {
@@ -110,8 +91,4 @@ export const updateUserProfile = async (uid: string, updates: Partial<any>) => {
     ...updates,
     updatedAt: new Date(),
   });
-};
-
-export const markRegistrationFeePaid = async (uid: string) => {
-  await updateUserProfile(uid, { registrationFeeStatus: 'paid' });
 };
