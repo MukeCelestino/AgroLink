@@ -20,6 +20,7 @@ import {
   subscribeToMyConversations,
   subscribeToConversationMessages,
   postMessage,
+  markConversationRead,
 } from '../services/messagingService';
 
 export const CURRENCY = 'K';
@@ -321,6 +322,11 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
       setMessages([]);
       return;
     }
+    // Opening a thread counts as reading it — clears the unread badge for
+    // this conversation (see AppShell's unreadCount).
+    markConversationRead(activeConversationId, currentUser.id).catch((error) =>
+      console.error('markConversationRead error:', error)
+    );
     return subscribeToConversationMessages(activeConversationId, setMessages);
   }, [currentUser, activeConversationId]);
 
@@ -440,8 +446,11 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
     });
   };
 
+  // Called with no id from the header's message icon — that should always
+  // land on the full thread list, not whatever was last viewed, so it
+  // resets activeConversationId rather than leaving it alone.
   const openMessages = (conversationId?: string) => {
-    if (conversationId) setActiveConversationId(conversationId);
+    setActiveConversationId(conversationId ?? null);
     setMessagesOpen(true);
   };
   const closeMessages = () => setMessagesOpen(false);

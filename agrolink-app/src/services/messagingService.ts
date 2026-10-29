@@ -28,6 +28,9 @@ export interface Conversation {
   createdAt: string;
   lastMessage?: string;
   lastMessageAt?: string;
+  // When each participant last read this thread — drives the unread badge
+  // in AppShell. Absent for a participant who has never opened it.
+  lastReadAt?: Record<string, string>;
 }
 
 export interface Message {
@@ -38,6 +41,18 @@ export interface Message {
   text: string;
   timestamp: string;
 }
+
+// Shared by the AppShell badge count and the MessagesDrawer inbox list, so
+// "unread" means the same thing in both places. A thread counts as unread
+// once it has a message and the last activity on it is newer than this
+// user's own lastReadAt entry (sending a message bumps your own, so your
+// own outgoing messages never count as unread for you).
+export const isConversationUnread = (conversation: Conversation, uid: string): boolean => {
+  if (!conversation.lastMessage) return false;
+  const lastActivity = conversation.lastMessageAt || conversation.createdAt;
+  const myLastRead = conversation.lastReadAt?.[uid];
+  return !myLastRead || new Date(lastActivity).getTime() > new Date(myLastRead).getTime();
+};
 
 // ==================== CONVERSATIONS ====================
 
@@ -140,6 +155,17 @@ export const postMessage = async (
   await updateDoc(doc(db, 'Conversations', conversationId), {
     lastMessage: text,
     lastMessageAt: timestamp,
+    // Sending a message counts as having read up to that point yourself,
+    // so you don't see your own message as "unread" in the badge.
+    [`lastReadAt.${senderId}`]: timestamp,
+  });
+};
+
+// Call when a user opens a thread (see MarketStore's activeConversationId
+// effect) so the unread badge clears for them.
+export const markConversationRead = async (conversationId: string, uid: string): Promise<void> => {
+  await updateDoc(doc(db, 'Conversations', conversationId), {
+    [`lastReadAt.${uid}`]: new Date().toISOString(),
   });
 };
 

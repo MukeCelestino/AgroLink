@@ -138,11 +138,13 @@ service cloud.firestore {
         || (isAdmin() && 'agrolink-system' in request.resource.data.participantIds)
       );
 
-      // Same split for the lastMessage/lastMessageAt bookkeeping update.
+      // Any real participant can update the conversation doc itself (this
+      // covers lastMessage/lastMessageAt bookkeeping on normal threads, and
+      // the lastReadAt.<uid> read-receipt a user writes on *any* thread
+      // they're in, including a system one — they just can't post a
+      // Message into a system thread, which is enforced separately below.
       allow update: if request.auth != null && (
-        (request.auth.uid in resource.data.participantIds
-          && !('agrolink-system' in resource.data.participantIds))
-        || (isAdmin() && 'agrolink-system' in resource.data.participantIds)
+        request.auth.uid in resource.data.participantIds || isAdmin()
       );
 
       match /Messages/{messageId} {

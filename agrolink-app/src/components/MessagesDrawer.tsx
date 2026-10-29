@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 
 import { useMarketStore } from '../store/MarketStore';
-import { SYSTEM_SENDER_ID } from '../services/messagingService';
+import { SYSTEM_SENDER_ID, isConversationUnread } from '../services/messagingService';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 
 function timeAgo(iso: string) {
@@ -55,12 +55,6 @@ export default function MessagesDrawer() {
     const otherId = conversation.participantIds.find((id) => id !== myId);
     return otherId ? conversation.participantNames[otherId] : 'Conversation';
   };
-
-  useEffect(() => {
-    if (messagesOpen && !activeConversationId && conversations.length) {
-      setActiveConversationId(conversations[0].id);
-    }
-  }, [messagesOpen, activeConversationId, conversations, setActiveConversationId]);
 
   useEffect(() => {
     if (thread.length) {
@@ -116,28 +110,36 @@ export default function MessagesDrawer() {
               ListEmptyComponent={
                 <Text style={styles.emptyText}>No conversations yet.</Text>
               }
-              renderItem={({ item }) => (
-                <Pressable
-                  style={styles.conversationRow}
-                  onPress={() => setActiveConversationId(item.id)}
-                >
-                  <View style={styles.conversationAvatar}>
-                    <Text style={styles.conversationAvatarText}>
-                      {otherName(item).charAt(0)}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.conversationName} numberOfLines={1}>
-                      {otherName(item)}
-                    </Text>
-                    {item.subject ? (
-                      <Text style={styles.conversationSubject} numberOfLines={1}>
-                        {item.subject}
+              renderItem={({ item }) => {
+                const unread = isConversationUnread(item, myId);
+                const subtitle = (unread ? item.lastMessage : item.subject || item.lastMessage) || '';
+                return (
+                  <Pressable
+                    style={styles.conversationRow}
+                    onPress={() => setActiveConversationId(item.id)}
+                  >
+                    <View style={styles.conversationAvatar}>
+                      <Text style={styles.conversationAvatarText}>
+                        {otherName(item).charAt(0)}
                       </Text>
-                    ) : null}
-                  </View>
-                </Pressable>
-              )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[styles.conversationName, unread && styles.conversationNameUnread]}
+                        numberOfLines={1}
+                      >
+                        {otherName(item)}
+                      </Text>
+                      {subtitle ? (
+                        <Text style={styles.conversationSubject} numberOfLines={1}>
+                          {subtitle}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {unread && <View style={styles.unreadDot} />}
+                  </Pressable>
+                );
+              }}
             />
           ) : (
             <>
@@ -265,6 +267,13 @@ const styles = StyleSheet.create({
     color: EcoColors.lime,
   },
   conversationName: { fontFamily: EcoFonts.bodyBold, fontSize: 14, color: EcoColors.text },
+  conversationNameUnread: { color: EcoColors.lime },
+  unreadDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: EcoColors.lime,
+  },
   conversationSubject: {
     fontFamily: EcoFonts.body,
     fontSize: 12,

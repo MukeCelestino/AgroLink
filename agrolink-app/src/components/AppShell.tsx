@@ -6,6 +6,7 @@ import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { useMarketStore, Role, ROLE_LABELS } from '../store/MarketStore';
+import { isConversationUnread } from '../services/messagingService';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 import MessagesDrawer from './MessagesDrawer';
 
@@ -41,7 +42,8 @@ export default function AppShell({
   } = useMarketStore();
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const conversationCount = myConversations().length;
+  const myId = currentUser?.id || 'me';
+  const unreadCount = myConversations().filter((c) => isConversationUnread(c, myId)).length;
 
   const handleTabPress = (route: (typeof TABS)[number]['route']) => {
     router.replace(route);
@@ -116,9 +118,9 @@ export default function AppShell({
 
           <Pressable style={styles.iconButton} onPress={() => openMessages()}>
             <Feather name="message-square" size={17} color={EcoColors.lime} />
-            {conversationCount > 0 && (
+            {unreadCount > 0 && (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>{conversationCount}</Text>
+                <Text style={styles.badgeText}>{unreadCount}</Text>
               </View>
             )}
           </Pressable>
