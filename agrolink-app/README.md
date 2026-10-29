@@ -1,56 +1,58 @@
-# Welcome to your Expo app 👋
+# AgroLink app
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+The Expo app for AgroLink — see the [root README](../README.md) for a
+feature overview.
 
-## Get started
+## Setup
 
-1. Install dependencies
-
+1. Install dependencies:
    ```bash
    npm install
    ```
-
-2. Start the app
-
+2. Copy `.env.example` to `.env` and fill in your Firebase project's web
+   config (Firebase console → Project settings → General → Your apps):
    ```bash
-   npx expo start
+   cp .env.example .env
+   ```
+3. Start the dev server:
+   ```bash
+   npx expo start --web   # or `npx expo start` for the dev-client/QR flow
    ```
 
-In the output, you'll find options to open the app in a
+## Scripts
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- `npm run web` — start the web dev server
+- `npm run android` / `npm run ios` — start on a connected device/emulator
+  (requires a dev build or Expo Go)
+- `npm run lint` — run ESLint
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Firebase project setup
 
-## Get a fresh project
+This app expects a Firebase project with:
 
-When you're ready, run:
+- **Authentication** → Email/Password provider enabled
+- **Firestore** → rules and composite indexes in `firestore.rules` /
+  `firestore.indexes.json`
+- **Storage** → rules in `storage.rules`, used for verification document
+  uploads (requires the project to be on the Blaze pricing plan — Storage
+  isn't available on the free Spark plan)
 
+Deploy all three with the [Firebase CLI](https://firebase.google.com/docs/cli)
+from this directory:
 ```bash
-npm run reset-project
+firebase deploy --only firestore:rules,firestore:indexes,storage
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+The first admin account has to be granted by hand — set `isAdmin: true` on
+their `Users/{uid}` document in the Firestore console.
 
-### Other setup steps
+## Tech notes
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- File-based routing via [Expo Router](https://docs.expo.dev/router/introduction/)
+  — screens live in `src/app/`
+- Shared app state lives in `src/store/MarketStore.tsx` (React Context,
+  backed by real-time Firestore listeners)
+- `src/services/` holds the Firebase-touching logic (auth, verification,
+  messaging)
+- Deployed as a static web export (`expo export --platform web`) to GitHub
+  Pages — see `../.github/workflows/deploy-pages.yml`
