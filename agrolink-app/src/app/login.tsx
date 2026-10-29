@@ -16,14 +16,16 @@ import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
-import { loginUser, getAuthErrorMessage } from '../services/authService';
+import { loginUser, getAuthErrorMessage, resetPassword } from '../services/authService';
 import { useToast } from '../components/ToastProvider';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
 
 export default function LoginScreen() {
   const { showAlert } = useToast();
+  const [mode, setMode] = useState<'login' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [resetSending, setResetSending] = useState(false);
 
   const handleLogin = async () => {
     try {
@@ -32,6 +34,38 @@ export default function LoginScreen() {
       router.replace('/dashboard');
     } catch (error: any) {
       showAlert('Login failed', getAuthErrorMessage(error), 'error');
+    }
+  };
+
+  // Shows the same "check your inbox" outcome whether or not the email is
+  // actually registered — never reveal which emails have accounts.
+  const handleResetPassword = async () => {
+    if (!email) {
+      showAlert('Missing email', 'Enter the email address on your account.', 'error');
+      return;
+    }
+    setResetSending(true);
+    try {
+      await resetPassword(email);
+      showAlert(
+        'Check your inbox',
+        "If an account exists for that email, we've sent a password reset link.",
+        'success'
+      );
+      setMode('login');
+    } catch (error: any) {
+      if (error?.code === 'auth/user-not-found') {
+        showAlert(
+          'Check your inbox',
+          "If an account exists for that email, we've sent a password reset link.",
+          'success'
+        );
+        setMode('login');
+      } else {
+        showAlert('Could not send reset email', getAuthErrorMessage(error), 'error');
+      }
+    } finally {
+      setResetSending(false);
     }
   };
 
@@ -76,53 +110,104 @@ export default function LoginScreen() {
                 </Text>
               </View>
 
-              <Text style={styles.eyebrow}>Welcome back</Text>
-              <Text style={styles.heading}>Sign in to your market.</Text>
-              <Text style={styles.subtext}>
-                Your produce, partners, and deliveries are waiting.
-              </Text>
+              {mode === 'login' ? (
+                <>
+                  <Text style={styles.eyebrow}>Welcome back</Text>
+                  <Text style={styles.heading}>Sign in to your market.</Text>
+                  <Text style={styles.subtext}>
+                    Your produce, partners, and deliveries are waiting.
+                  </Text>
 
-              <View style={styles.form}>
-                <Field label="Email address" icon="mail">
-                  <TextInput
-                    style={styles.input}
-                    placeholder="you@example.com"
-                    placeholderTextColor={EcoColors.placeholder}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    value={email}
-                    onChangeText={setEmail}
-                  />
-                </Field>
+                  <View style={styles.form}>
+                    <Field label="Email address" icon="mail">
+                      <TextInput
+                        style={styles.input}
+                        placeholder="you@example.com"
+                        placeholderTextColor={EcoColors.placeholder}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        value={email}
+                        onChangeText={setEmail}
+                      />
+                    </Field>
 
-                <Field label="Password" icon="lock">
-                  <TextInput
-                    style={styles.input}
-                    placeholder="••••••••"
-                    placeholderTextColor={EcoColors.placeholder}
-                    secureTextEntry
-                    value={password}
-                    onChangeText={setPassword}
-                  />
-                </Field>
+                    <Field label="Password" icon="lock">
+                      <TextInput
+                        style={styles.input}
+                        placeholder="••••••••"
+                        placeholderTextColor={EcoColors.placeholder}
+                        secureTextEntry
+                        value={password}
+                        onChangeText={setPassword}
+                      />
+                    </Field>
 
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.submitButton,
-                    pressed && styles.submitButtonPressed,
-                  ]}
-                  onPress={handleLogin}
-                >
-                  <Text style={styles.submitButtonText}>Sign in</Text>
-                </Pressable>
-              </View>
+                    <Pressable onPress={() => setMode('reset')} style={styles.forgotLink}>
+                      <Text style={styles.forgotLinkText}>Forgot password?</Text>
+                    </Pressable>
 
-              <View style={styles.footerRow}>
-                <Text style={styles.footerText}>New to AgroLink? </Text>
-                <Pressable onPress={() => router.push('/register')}>
-                  <Text style={styles.footerLink}>Create an account</Text>
-                </Pressable>
-              </View>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.submitButton,
+                        pressed && styles.submitButtonPressed,
+                      ]}
+                      onPress={handleLogin}
+                    >
+                      <Text style={styles.submitButtonText}>Sign in</Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.footerRow}>
+                    <Text style={styles.footerText}>New to AgroLink? </Text>
+                    <Pressable onPress={() => router.push('/register')}>
+                      <Text style={styles.footerLink}>Create an account</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.eyebrow}>Account recovery</Text>
+                  <Text style={styles.heading}>Reset your password.</Text>
+                  <Text style={styles.subtext}>
+                    Enter your account email and we'll send you a reset link.
+                  </Text>
+
+                  <View style={styles.form}>
+                    <Field label="Email address" icon="mail">
+                      <TextInput
+                        style={styles.input}
+                        placeholder="you@example.com"
+                        placeholderTextColor={EcoColors.placeholder}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        value={email}
+                        onChangeText={setEmail}
+                        editable={!resetSending}
+                      />
+                    </Field>
+
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.submitButton,
+                        pressed && styles.submitButtonPressed,
+                        resetSending && styles.submitButtonDisabled,
+                      ]}
+                      onPress={handleResetPassword}
+                      disabled={resetSending}
+                    >
+                      <Text style={styles.submitButtonText}>
+                        {resetSending ? 'Sending…' : 'Send reset link'}
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.footerRow}>
+                    <Pressable onPress={() => setMode('login')}>
+                      <Text style={styles.footerLink}>Back to sign in</Text>
+                    </Pressable>
+                  </View>
+                </>
+              )}
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -275,10 +360,21 @@ const styles = StyleSheet.create({
   submitButtonPressed: {
     backgroundColor: EcoColors.limeDeep,
   },
+  submitButtonDisabled: {
+    opacity: 0.7,
+  },
   submitButtonText: {
     fontFamily: EcoFonts.bodyBold,
     fontSize: 15,
     color: EcoColors.onLime,
+  },
+  forgotLink: {
+    alignSelf: 'flex-end',
+  },
+  forgotLinkText: {
+    fontFamily: EcoFonts.bodySemiBold,
+    fontSize: 13,
+    color: EcoColors.lime,
   },
   footerRow: {
     flexDirection: 'row',
