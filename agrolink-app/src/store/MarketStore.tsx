@@ -32,6 +32,14 @@ export type Role = 'buyer' | 'seller' | 'transporter';
 export type ListingStatus = 'listed' | 'closed';
 export type OrderStatus = 'ordered' | 'in_transit' | 'delivered';
 export type Coverage = 'cross_border' | 'country' | 'province' | 'district';
+export type PaymentStatus = 'unpaid' | 'paid';
+export type PaymentMethod = 'cash' | 'mobile_money' | 'other';
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  mobile_money: 'Mobile Money',
+  other: 'Other',
+};
 
 export const ROLE_LABELS: Record<Role, string> = {
   buyer: 'Buyer',
@@ -95,6 +103,13 @@ export interface Order {
   transporterId?: string;
   createdAt: string;
   updates: DeliveryUpdate[];
+  // Manually confirmed by the seller — AgroLink doesn't process payment
+  // itself; buyer and seller settle up outside the app (cash, mobile
+  // money, etc.) and the seller marks it once they've actually received
+  // it. Absent on older orders, treat as 'unpaid'.
+  paymentStatus?: PaymentStatus;
+  paymentMethod?: PaymentMethod;
+  paidAt?: string;
 }
 
 export interface BuyRequest {
@@ -181,6 +196,7 @@ interface MarketState {
   buyListing: (listingId: string, destination: string, orderedQuantity: number) => Promise<void>;
   acceptDelivery: (orderId: string) => Promise<void>;
   markDelivered: (orderId: string) => Promise<void>;
+  markOrderPaid: (orderId: string, method: PaymentMethod) => Promise<void>;
   addDeliveryUpdate: (
     orderId: string,
     update: { location: string; status: string; lat?: number; lng?: number }
@@ -393,6 +409,7 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
         buyerName: myName,
         createdAt: new Date().toISOString(),
         updates: [],
+        paymentStatus: 'unpaid',
       };
       transaction.set(orderRef, order);
     });
@@ -402,6 +419,18 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
     await updateDoc(doc(db, 'Orders', orderId), {
       status: 'in_transit',
       transporterId: myId,
+    });
+  };
+
+  // Payment itself happens outside the app (cash, mobile money, etc.) — the
+  // seller is the one who actually sees the money arrive, so they're the
+  // one who confirms it here. firestore.rules already lets a seller update
+  // any field on their own order, so no rule changes were needed for this.
+  const markOrderPaid: MarketState['markOrderPaid'] = async (orderId, method) => {
+    await updateDoc(doc(db, 'Orders', orderId), {
+      paymentStatus: 'paid',
+      paymentMethod: method,
+      paidAt: new Date().toISOString(),
     });
   };
 
@@ -515,6 +544,7 @@ export function MarketStoreProvider({ children }: { children: React.ReactNode })
         buyListing,
         acceptDelivery,
         markDelivered,
+        markOrderPaid,
         addDeliveryUpdate,
         buyRequests,
         addBuyRequest,

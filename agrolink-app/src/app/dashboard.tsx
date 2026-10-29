@@ -15,9 +15,19 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { auth } from '../firebase/config';
 import { getUserProfile } from '../services/authService';
+import { useToast } from '../components/ToastProvider';
 import { EcoColors, EcoFonts } from '../constants/ecoTheme';
-import { CURRENCY, ROLE_LABELS, Role, useMarketStore } from '../store/MarketStore';
+import {
+  CURRENCY,
+  PAYMENT_METHOD_LABELS,
+  PaymentMethod,
+  ROLE_LABELS,
+  Role,
+  useMarketStore,
+} from '../store/MarketStore';
 import AppShell from '../components/AppShell';
+
+const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'mobile_money', 'other'];
 
 function timeAgo(iso: string) {
   const minutes = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -58,11 +68,27 @@ const quickPaths: {
 ];
 
 export default function DashboardScreen() {
-  const { listings, orders, activeRole, currentUser, setCurrentUser, setRoles } = useMarketStore();
+  const { listings, orders, activeRole, currentUser, setCurrentUser, setRoles, markOrderPaid } =
+    useMarketStore();
+  const { showAlert } = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'current' | 'past'>('current');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
+  const [paymentSaving, setPaymentSaving] = useState(false);
+
+  const handleMarkPaid = async (orderId: string, method: PaymentMethod) => {
+    setPaymentSaving(true);
+    try {
+      await markOrderPaid(orderId, method);
+      setMarkingPaidId(null);
+    } catch (error: any) {
+      showAlert('Could not update payment', error.message || 'Please try again.', 'error');
+    } finally {
+      setPaymentSaving(false);
+    }
+  };
 
   useEffect(() => {
     fetchUserData();
@@ -310,6 +336,40 @@ export default function DashboardScreen() {
                           </Pressable>
                         )}
                       </View>
+                      <View style={[styles.activityDetail, styles.paymentDetail]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.activityDetailLabel}>Payment</Text>
+                          <Text style={styles.activityDetailValue}>
+                            {tx.paymentStatus === 'paid'
+                              ? `Paid via ${PAYMENT_METHOD_LABELS[tx.paymentMethod || 'other']}${
+                                  tx.paidAt ? ` · ${timeAgo(tx.paidAt)}` : ''
+                                }`
+                              : 'Unpaid'}
+                          </Text>
+                        </View>
+                        {activeRole === 'seller' && tx.paymentStatus !== 'paid' && (
+                          markingPaidId === tx.id ? (
+                            <View style={styles.paymentMethodRow}>
+                              {PAYMENT_METHODS.map((method) => (
+                                <Pressable
+                                  key={method}
+                                  style={styles.paymentMethodChip}
+                                  disabled={paymentSaving}
+                                  onPress={() => handleMarkPaid(tx.id, method)}
+                                >
+                                  <Text style={styles.paymentMethodChipText}>
+                                    {PAYMENT_METHOD_LABELS[method]}
+                                  </Text>
+                                </Pressable>
+                              ))}
+                            </View>
+                          ) : (
+                            <Pressable onPress={() => setMarkingPaidId(tx.id)}>
+                              <Text style={styles.mapLink}>Mark as paid</Text>
+                            </Pressable>
+                          )
+                        )}
+                      </View>
                     </>
                   )}
                 </View>
@@ -537,6 +597,16 @@ const styles = StyleSheet.create({
   activityDetailLabel: { fontFamily: EcoFonts.body, fontSize: 11, color: EcoColors.muted },
   activityDetailValue: { fontFamily: EcoFonts.bodySemiBold, fontSize: 13, color: EcoColors.text, marginTop: 2 },
   updateDetail: { marginTop: 8, alignItems: 'center' },
+  paymentDetail: { marginTop: 8, alignItems: 'center' },
+  paymentMethodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' },
+  paymentMethodChip: {
+    borderWidth: 1,
+    borderColor: EcoColors.lime,
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  paymentMethodChipText: { fontFamily: EcoFonts.bodyBold, fontSize: 11, color: EcoColors.lime },
   mapLink: { fontFamily: EcoFonts.bodyBold, fontSize: 12, color: EcoColors.lime },
   seeMarketLink: { fontFamily: EcoFonts.bodyBold, fontSize: 12, color: EcoColors.lime },
   freshList: { gap: 10 },
