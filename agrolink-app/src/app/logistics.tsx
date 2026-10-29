@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { router } from 'expo-router';
+import * as Location from 'expo-location';
 
 import {
   useMarketStore,
@@ -46,10 +47,84 @@ export default function LogisticsScreen() {
   const [updateLocation, setUpdateLocation] = useState('');
   const [updateStatus, setUpdateStatus] = useState('');
 
+  // Per-job "Share my location" toggle: each tracked order gets its own
+  // expo-location watch subscription, so a transporter running multiple
+  // in-transit jobs can share (or not) independently for each one.
+  const [trackedOrderIds, setTrackedOrderIds] = useState<Record<string, boolean>>({});
+  const subscriptionsRef = useRef<Record<string, Location.LocationSubscription>>({});
+
   const myDeliveries = orders.filter(
     (order) => order.status === 'in_transit' && order.transporterId === myId
   );
   const availableJobs = orders.filter((order) => order.status === 'ordered');
+
+  // Stop sharing for any job that's no longer active (e.g. marked delivered)
+  // instead of leaving a GPS watch running against a closed order.
+  useEffect(() => {
+    const activeIds = new Set(
+      orders
+        .filter((order) => order.status === 'in_transit' && order.transporterId === myId)
+        .map((order) => order.id)
+    );
+    Object.keys(subscriptionsRef.current).forEach((orderId) => {
+      if (!activeIds.has(orderId)) stopTracking(orderId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, myId]);
+
+  // Belt-and-braces: stop every watch on unmount so nothing keeps polling
+  // GPS after the transporter navigates away from this screen.
+  useEffect(() => {
+    return () => {
+      Object.values(subscriptionsRef.current).forEach((sub) => sub.remove());
+      subscriptionsRef.current = {};
+    };
+  }, []);
+
+  const stopTracking = (orderId: string) => {
+    subscriptionsRef.current[orderId]?.remove();
+    delete subscriptionsRef.current[orderId];
+    setTrackedOrderIds((prev) => {
+      if (!prev[orderId]) return prev;
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
+  };
+
+  const handleToggleTracking = async (orderId: string) => {
+    if (trackedOrderIds[orderId]) {
+      stopTracking(orderId);
+      return;
+    }
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        showAlert(
+          'Location permission needed',
+          'Allow location access to share your position with the buyer and seller.',
+          'error'
+        );
+        return;
+      }
+      const subscription = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.Balanced, timeInterval: 90000, distanceInterval: 25 },
+        (loc) => {
+          const { latitude, longitude } = loc.coords;
+          addDeliveryUpdate(orderId, {
+            location: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+            status: 'En route',
+            lat: latitude,
+            lng: longitude,
+          }).catch((error: any) => console.error('Location ping error:', error));
+        }
+      );
+      subscriptionsRef.current[orderId] = subscription;
+      setTrackedOrderIds((prev) => ({ ...prev, [orderId]: true }));
+    } catch (error: any) {
+      showAlert('Could not start sharing location', error.message || 'Please try again.', 'error');
+    }
+  };
 
   const handleSaveProfile = () => {
     saveTransporterProfile({ location: profileLocation, coverage: profileCoverage });
@@ -199,6 +274,25 @@ export default function LogisticsScreen() {
                 <Text style={[styles.routeLabel, { marginTop: 8 }]}>To</Text>
                 <Text style={styles.routeValue}>{order.destination}</Text>
               </View>
+
+              <Pressable
+                style={[styles.trackToggle, trackedOrderIds[order.id] && styles.trackToggleActive]}
+                onPress={() => handleToggleTracking(order.id)}
+              >
+                <Feather
+                  name="map-pin"
+                  size={14}
+                  color={trackedOrderIds[order.id] ? EcoColors.onLime : EcoColors.lime}
+                />
+                <Text
+                  style={[
+                    styles.trackToggleText,
+                    trackedOrderIds[order.id] && styles.trackToggleTextActive,
+                  ]}
+                >
+                  {trackedOrderIds[order.id] ? 'Sharing location…' : 'Share my location'}
+                </Text>
+              </Pressable>
 
               {activeUpdateId === order.id ? (
                 <View style={styles.buyForm}>
@@ -439,6 +533,20 @@ const styles = StyleSheet.create({
     color: EcoColors.muted,
   },
   routeValue: { fontFamily: EcoFonts.body, fontSize: 13, color: EcoColors.text, marginTop: 2 },
+  trackToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: EcoColors.borderStrong,
+    borderRadius: 14,
+    paddingVertical: 11,
+  },
+  trackToggleActive: { backgroundColor: EcoColors.lime, borderColor: EcoColors.lime },
+  trackToggleText: { fontFamily: EcoFonts.bodyBold, fontSize: 13, color: EcoColors.lime },
+  trackToggleTextActive: { color: EcoColors.onLime },
   row: { flexDirection: 'row', gap: 10, marginTop: 14 },
   rowInput: { flex: 1, minWidth: 0 },
   cancelButton: {

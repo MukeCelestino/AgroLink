@@ -1,5 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Image,
+  ActivityIndicator,
+  Linking,
+} from 'react-native';
 import { router } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -234,6 +243,12 @@ export default function DashboardScreen() {
           <View style={styles.activityList}>
             {currentTransactions.map((tx) => {
               const expanded = expandedId === tx.id;
+              const latestUpdate =
+                tx.updates.length > 0
+                  ? [...tx.updates].sort(
+                      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                    )[0]
+                  : null;
               return (
                 <View key={tx.id} style={styles.activityCard}>
                   <Pressable
@@ -258,21 +273,44 @@ export default function DashboardScreen() {
                     />
                   </Pressable>
                   {expanded && (
-                    <View style={styles.activityDetail}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.activityDetailLabel}>Destination</Text>
-                        <Text style={styles.activityDetailValue}>
-                          {tx.destination || 'Not assigned yet'}
-                        </Text>
+                    <>
+                      <View style={styles.activityDetail}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.activityDetailLabel}>Destination</Text>
+                          <Text style={styles.activityDetailValue}>
+                            {tx.destination || 'Not assigned yet'}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.activityDetailLabel}>Value</Text>
+                          <Text style={styles.activityDetailValue}>
+                            {CURRENCY}
+                            {tx.price.toLocaleString()}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.activityDetailLabel}>Value</Text>
-                        <Text style={styles.activityDetailValue}>
-                          {CURRENCY}
-                          {tx.price.toLocaleString()}
-                        </Text>
+                      <View style={[styles.activityDetail, styles.updateDetail]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.activityDetailLabel}>Last update</Text>
+                          <Text style={styles.activityDetailValue}>
+                            {latestUpdate
+                              ? `${latestUpdate.status} · ${timeAgo(latestUpdate.timestamp)}`
+                              : 'No updates yet'}
+                          </Text>
+                        </View>
+                        {latestUpdate?.lat != null && latestUpdate?.lng != null && (
+                          <Pressable
+                            onPress={() =>
+                              Linking.openURL(
+                                `https://www.google.com/maps?q=${latestUpdate.lat},${latestUpdate.lng}`
+                              )
+                            }
+                          >
+                            <Text style={styles.mapLink}>View on map</Text>
+                          </Pressable>
+                        )}
                       </View>
-                    </View>
+                    </>
                   )}
                 </View>
               );
@@ -498,6 +536,8 @@ const styles = StyleSheet.create({
   },
   activityDetailLabel: { fontFamily: EcoFonts.body, fontSize: 11, color: EcoColors.muted },
   activityDetailValue: { fontFamily: EcoFonts.bodySemiBold, fontSize: 13, color: EcoColors.text, marginTop: 2 },
+  updateDetail: { marginTop: 8, alignItems: 'center' },
+  mapLink: { fontFamily: EcoFonts.bodyBold, fontSize: 12, color: EcoColors.lime },
   seeMarketLink: { fontFamily: EcoFonts.bodyBold, fontSize: 12, color: EcoColors.lime },
   freshList: { gap: 10 },
   freshRow: {
